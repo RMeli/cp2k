@@ -1310,6 +1310,10 @@ if(CP2K_USE_LIBTORCH)
   list(APPEND CP2K_SRCS_CPP torch_c_api.cpp)
 endif()
 
+if (CP2K_USE_DLAF)
+  list(APPEND CP2K_SRCS_C fm/cholesky_dla.cpp)
+endif()
+
 if(CP2K_USE_CUDA OR CP2K_USE_HIP)
   if(NOT CP2K_DISABLE_PW_GPU)
     list(APPEND PW_SRCS_GPU pw/gpu/pw_gpu_kernels.cu)
@@ -1393,6 +1397,7 @@ target_link_libraries(
     $<$<BOOL:${CP2K_USE_COSMA}>:cosma::cosma_prefixed_pxgemm>
     $<$<BOOL:${CP2K_USE_COSMA}>:cosma::cosma>
     $<$<BOOL:${CP2K_USE_COSMA}>:costa::costa>
+    $<$<BOOL:${CP2K_USE_DLAF}>:DLAF::DLAF>
     DBCSR::dbcsr
     $<$<BOOL:${CP2K_USE_TORCH}>:${TORCH_LIBRARIES}>
     $<$<BOOL:${CP2K_USE_CUDA}>:CUDA::cufft>
@@ -1463,6 +1468,7 @@ target_compile_definitions(
          $<$<BOOL:${CP2K_USE_PEXSI}>:__LIBPEXSI>
          $<$<BOOL:${CP2K_USE_LIBTORCH}>:__LIBTORCH>
          $<$<BOOL:${CP2K_USE_COSMA}>:__COSMA>
+         $<$<BOOL:${CP2K_USE_DLAF}>:__DLAF>
          $<$<BOOL:${CP2K_USE_LIBXSMM}>:__LIBXSMM>
          $<$<STREQUAL:${CP2K_BLAS_VENDOR},MKL>:__MKL>
          $<$<STREQUAL:${CP2K_BLAS_VENDOR},Apple>:__ACCELERATE>
