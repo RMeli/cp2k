@@ -99,6 +99,7 @@ option(CP2K_USE_SPLA
 option(CP2K_USE_METIS "enable metis library support" OFF)
 option(CP2K_USE_LIBXSMM "Use libxsmm for small gemms (supports x86 platforms)"
        ON)
+option(CP2K_USE_DLA-Future "Use DLA-Future fr cholesky and / or eigensolver" OFF)
 
 cmake_dependent_option(CP2K_ENABLE_ELPA_OPENMP_SUPPORT
                        "Enable elpa openmp support" OFF "CP2K_USE_ELPA" OFF)
@@ -399,6 +400,11 @@ endif()
 
 if(CP2K_USE_VORI)
   find_package(LibVORI REQUIRED)
+endif()
+
+# check for DLA-Future package
+if (CP2K_USE_DLAF)
+  find_package(DLAF REQUIRED)
 endif()
 
 # FFTW3
