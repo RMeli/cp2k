@@ -104,6 +104,8 @@ compile_commands.json
 CTestTestfile.cmake
 _deps
 
+build*/
+
 ### CMake Patch ###
 # External projects
 *-prefix/
@@ -363,3 +365,6 @@ tags
 [._]*.un~
 
 # End of https://www.gitignore.io/api/python,fortran,c,c++,cuda,emacs,vim,cmake
+
+# Language Servers
+.fortls

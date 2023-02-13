@@ -10,30 +10,30 @@ MODULE dlaf
   PUBLIC :: cp_pdpotrf_dlaf, cp_pspotrf_dlaf, cp_dlaf_init, cp_dlaf_finalize
 CONTAINS
 
-      SUBROUTINE cp_dlaf_init()
-        INTERFACE
-           SUBROUTINE dlaf_init_aux() &
-                BIND(C, name='dlaf_init')
-           end SUBROUTINE dlaf_init_aux
-        end INTERFACE
+  SUBROUTINE cp_dlaf_init()
+    INTERFACE
+       SUBROUTINE dlaf_init_aux() &
+            BIND(C, name='dlaf_init')
+       end SUBROUTINE dlaf_init_aux
+    end INTERFACE
 
-        !character(:), allocatable :: arg
-        !integer arglen, stat
-        !call get_command_argument(number=1, length=arglen)  ! Assume for simplicity success
-        !allocate (character(arglen) :: arg)
-        !call get_command_argument(number=1, value=arg, status=stat)
+    !character(:), allocatable :: arg
+    !integer arglen, stat
+    !call get_command_argument(number=1, length=arglen)  ! Assume for simplicity success
+    !allocate (character(arglen) :: arg)
+    !call get_command_argument(number=1, value=arg, status=stat)
 
-        call dlaf_init_aux()
-      end SUBROUTINE cp_dlaf_init
+    call dlaf_init_aux()
+  end SUBROUTINE cp_dlaf_init
 
-      SUBROUTINE cp_dlaf_finalize()
-        INTERFACE
-           SUBROUTINE dlaf_finalize_aux() &
-                BIND(C, name='dlaf_finalize')
-           end SUBROUTINE dlaf_finalize_aux
-        end INTERFACE
-        call dlaf_finalize_aux()
-      end SUBROUTINE cp_dlaf_finalize
+  SUBROUTINE cp_dlaf_finalize()
+    INTERFACE
+       SUBROUTINE dlaf_finalize_aux() &
+            BIND(C, name='dlaf_finalize')
+       end SUBROUTINE dlaf_finalize_aux
+    end INTERFACE
+    call dlaf_finalize_aux()
+  end SUBROUTINE cp_dlaf_finalize
 
   SUBROUTINE cp_pdpotrf_dlaf(uplo, n, a, ia, ja, desca, info)
     CHARACTER, INTENT(IN) ::           uplo
