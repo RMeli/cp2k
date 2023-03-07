@@ -1,7 +1,7 @@
 //
 // Distributed Linear Algebra with Future (DLAF)
 //
-// Copyright (c) 2018-2022, ETH Zurich
+// Copyright (c) 2018-2023, ETH Zurich
 // All rights reserved.
 //
 // Please, refer to the LICENSE file in the root directory.
@@ -27,6 +27,8 @@
 #include "dlaf/communication/error.h"
 #include "dlaf/communication/init.h"
 #include "dlaf/communication/sync/broadcast.h"
+#include "dlaf/eigensolver/eigensolver.h"
+#include "dlaf/eigensolver/get_band_size.h"
 #include "dlaf/factorization/cholesky.h"
 #include "dlaf/init.h"
 #include "dlaf/matrix/copy.h"
@@ -90,18 +92,18 @@ static int get_grid_context(int *desca)
 extern "C" void dlaf_init() {
   if (!dlaf_init_) {
     using namespace pika::program_options;
-    int argc = 2;
+    int argc = 1;
 
-    std::string tmp = "--pika:threads=";
-    auto my_string = getenv("OMP_NUM_THREADS");
-    if(my_string == nullptr) {
-      tmp += std::to_string(1);
-    } else {
-      tmp += std::string(my_string);
-    }
+    // std::string tmp = "--pika:threads=";
+    // auto my_string = getenv("OMP_NUM_THREADS");
+    // if(my_string == nullptr) {
+    //   tmp += std::to_string(1);
+    // } else {
+    //   tmp += std::string(my_string);
+    // }
 
     // TODO something wrong with passing command line arguments by hand
-    const char *argv[] = {"--pika:print-bind", tmp.c_str(), nullptr};
+    const char *argv[] = {"--pika:print-bind", /*tmp.c_str(),*/ nullptr};
     options_description desc_commandline("cp2k_dlaf");
     //desc_commandline.add(dlaf::miniapp::getMiniappOptionsDescription());
     desc_commandline.add(dlaf::getOptionsDescription());
@@ -127,11 +129,15 @@ extern "C" void dlaf_finalize() {
   dlaf_init_ = false;
 }
 
-template <typename T> void pxpotrf_dla(char uplo__, int n__, T *a__, int ia__, int ja__, int *desca__, int &info__)
+template <typename T> void pxpotrf_dla(
+    char uplo__, int n__, T* a__, int ia__, int ja__, int* desca__,
+    int& info__
+)
 {
 
   if (uplo__ != 'U' && uplo__ != 'u' && uplo__ != 'L' && uplo__ != 'l') {
-    std::cerr << "DLA Cholesky : The UpLo parameter has a incorrect value. Please check the scalapack documentation.\n";
+    std::cerr << "DLA Cholesky : The UpLo parameter has a incorrect value. ";
+    std::cerr << "Please check the scalapack documentation.\n";
     info__ = -1;
     return;
   }
@@ -203,7 +209,7 @@ template <typename T> void pxpotrf_dla(char uplo__, int n__, T *a__, int ia__, i
   Matrix<T, Device::CPU> mat(std::move(distribution), layout, a__);
 
   {
-    using MatrixMirrorType = MatrixMirror<T,  dlaf::Device::Default, Device::CPU>;
+    using MatrixMirrorType = MatrixMirror<T,  Device::Default, Device::CPU>;
     MatrixMirrorType matrix(mat);
 
     switch(uplo__) {
@@ -221,7 +227,7 @@ template <typename T> void pxpotrf_dla(char uplo__, int n__, T *a__, int ia__, i
 
     // TODO: Can this be relaxed (removed)?
     matrix.get().waitLocalTiles();
-  }
+  } // Destroy MatrixMirror; copy results back to Device::CPU
   
   // TODO: Can this be relaxed (removed)?
   mat.waitLocalTiles();
@@ -249,4 +255,126 @@ extern "C" void pdpotrf_dlaf(char *uplo__, int n__, double *a__, int ia__, int j
 extern "C" void pspotrf_dlaf(char *uplo__, int n__, float *a__, int ia__, int ja__, int *desca__, int *info__)
 {
   pxpotrf_dla<float>(*uplo__, n__, a__, ia__, ja__, desca__, *info__);
+}
+
+template <typename T> 
+void pdsyevd_dlaf_cpp(char jobz__, char uplo__, int n__, 
+                      T* a__, int ia__, int ja__, int* desca__,
+                      T* w__, T* z__, int iz__, int jz__, int* desc_z__,
+                      T* work__, int lwork__, int* iwork__, int liwork__,
+                      int& info__)
+{
+  // if (uplo__ != 'U' && uplo__ != 'u' && uplo__ != 'L' && uplo__ != 'l') {
+  //   std::cerr << "DLAF Eigensolver: The UpLo parameter has a incorrect value. ";
+  //   std::cerr << "Please check the scalapack documentation.\n";
+  //   info__ = -1;
+  //   return;
+  // }
+
+  if (desca__[0] != 1) {
+    info__ = -1; // only treat dense matrices
+    return;
+  }
+
+  if (!dlaf_init_) {
+    std::cout << "Error: DLA Future must be initialized\n";
+    info__ = -1;
+  }
+
+  using dlaf::common::make_data;
+
+  pika::resume();
+
+  // Retrive total matrix sizes
+  int n = desca__[2]; // Number of cols
+  int m = desca__[3]; // Number of rows
+ 
+  // Retrieve matrix blocks sizes
+  int mb = desca__[4]; // Blocking factor for cols
+  int nb = desca__[5]; // Blocking factor for rows 
+
+  // Get MPI communicator from BLACS context
+  MPI_Comm comm = get_communicator(desca__[1]); // From BLACS context
+  Communicator world(comm);
+
+  DLAF_MPI_CHECK_ERROR(MPI_Barrier(world));
+
+  int size;
+  MPI_Comm_size(comm, &size);
+
+  int dims[2] = {0, 0};
+  int coords[2] = {-1, -1};
+   
+  // Get calling process coordinates in BLACS grid (and grid dimesnios)
+  Cblacs_gridinfo(desca__[1], &dims[0], &dims[1], &coords[0], &coords[1]);
+
+  // Define DLAF communication grid (same size as BLACS grid)
+  CommunicatorGrid comm_grid(world, dims[0], dims[1], Ordering::RowMajor); // TODO: Is RowMajor correct here?
+
+  // Allocate memory for the matrix
+  GlobalElementSize matrix_size(n, m);
+  TileElementSize block_size(nb, mb);
+  Index2D src_rank_index(0,0); // TODO: Get from BLACS?
+
+  // Contains information about size and distribution of the matrix
+  dlaf::matrix::Distribution distribution(matrix_size,
+                                          block_size,
+                                          comm_grid.size(),
+                                          comm_grid.rank(),
+                                          src_rank_index);
+
+  // leading dimension of local array
+  const int lda_ = desca__[8];
+
+  // Contains information about how the elements of the matrix are stored (and where)
+  dlaf::matrix::LayoutInfo layout = colMajorLayout(distribution, lda_);
+
+  // DLAF matrix, manages the correct dependencies of taks involving tiles
+  // Not thread safe
+  Matrix<T, Device::CPU> host_matrix(distribution, layout, a__);
+
+  using MatrixMirrorType = MatrixMirror<T, dlaf::Device::Default, Device::CPU>;
+  MatrixMirrorType matrix(host_matrix);
+
+  // uplo__ checked above
+  auto dlaf_uplo = uplo__ == 'U' or uplo__ == 'u' ? blas::Uplo::Upper : blas::Uplo::Lower;
+
+  //std::cerr << "Calling DLAF eigensolver..." << std::endl;
+
+  // WARN: Hard-coded to LOWER, use dlaf_uplo instead
+  auto [eigenvalues, eigenvectors] = 
+        dlaf::eigensolver::eigensolver<Backend::Default, Device::Default, T>(
+            comm_grid, blas::Uplo::Lower, matrix.get()
+        );
+
+  //std::cerr << "DLAF eigensolver terminated successfully!" << std::endl;
+
+  // TODO: Remove?
+  eigenvectors.waitLocalTiles();
+  DLAF_MPI_CHECK_ERROR(MPI_Barrier(world));
+
+  // WARN: Does this automatically transfer GPU matrices to the CPU?
+  // Create DLAF matrices from CP2K-allocated ones
+  Matrix<T, dlaf::Device::CPU> eigenvectors_cp2k(distribution, layout, z__); // Distributed eigenvectors
+  auto eigenvalues_cp2k = dlaf::matrix::createMatrixFromColMajor<dlaf::Device::CPU>({n__, 1}, {block_size.rows(), 1}, n__, w__);
+
+  // Copy DLAF results into CP2K-allocated memory
+  dlaf::matrix::copy(eigenvectors, eigenvectors_cp2k);
+  dlaf::matrix::copy(eigenvalues, eigenvalues_cp2k);
+
+  pika::suspend();
+  info__ = 0;
+}
+
+extern "C" void pdsyevd_dlaf(char* jobz__, char* uplo__, int n__, 
+                      double* a__, int ia__, int ja__, int* desca__,
+                      double* w__, double* z__, int iz__, int jz__, int* desc_z__,
+                      double* work__, int lwork__, int* iwork__, int liwork__,
+                      int *info__)
+{
+  pdsyevd_dlaf_cpp<double>(*jobz__, *uplo__, n__, 
+                      a__, ia__, ja__, desca__,
+                      w__, z__, iz__, jz__, desc_z__,
+                      work__, lwork__, iwork__, liwork__,
+                      *info__);
 }

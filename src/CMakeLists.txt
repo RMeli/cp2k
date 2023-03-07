@@ -1393,9 +1393,9 @@ target_link_libraries(
     $<$<BOOL:${CP2K_USE_SPGLIB}>:CP2K::LIBSPG::libspg>
     $<$<BOOL:${CP2K_USE_LIBXC}>:CP2K::Libxc::xc>
     $<$<BOOL:${CP2K_USE_ELPA}>:CP2K::ELPA::elpa>
-    $<$<BOOL:${CP2K_USE_FFTW3}>:CP2K::FFTW3::fftw3>
-    $<$<BOOL:${CP2K_ENABLE_FFTW3_THREADS_SUPPORT}>:CP2K::FFTW3::fftw3_threads>
-    $<$<BOOL:${CP2K_ENABLE_FFTW3_OPENMP_SUPPORT}>:CP2K::FFTW3::fftw3_omp>
+    # $<$<BOOL:${CP2K_USE_FFTW3}>:CP2K::FFTW3::fftw3>
+    # $<$<BOOL:${CP2K_ENABLE_FFTW3_THREADS_SUPPORT}>:CP2K::FFTW3::fftw3_threads>
+    # $<$<BOOL:${CP2K_ENABLE_FFTW3_OPENMP_SUPPORT}>:CP2K::FFTW3::fftw3_omp>
     $<$<BOOL:${CP2K_USE_SPLA}>:SPLA::spla>
     $<$<BOOL:${CP2K_USE_LIBINT2}>:CP2K::Libint2::int2>
     $<$<BOOL:${CP2K_USE_COSMA}>:cosma::cosma_prefixed_pxgemm>

@@ -56,6 +56,9 @@ MODULE cp_fm_diag
                               ieee_set_halting_mode, &
                               IEEE_ALL
 #endif
+#ifdef __DLAF
+   USE dlaf, ONLY: cp_pdsyevd_dlaf
+#endif
 #include "../base/base_uses.f90"
 
    IMPLICIT NONE
@@ -514,6 +517,7 @@ CONTAINS
       lwork = -1
       ALLOCATE (work(1))
 
+      ! TODO: Skip work space quesy when using DLAF?
       CALL pdsyevd('V', 'U', n, m(1, 1), 1, 1, descm, eigenvalues(1), v(1, 1), 1, 1, descv, &
                    work(1), lwork, iwork(1), liwork, myinfo)
 
@@ -544,8 +548,13 @@ CONTAINS
       CALL ieee_set_halting_mode(IEEE_ALL, .FALSE.)
 #endif
 
-      CALL pdsyevd('V', 'U', n, m(1, 1), 1, 1, descm, eigenvalues(1), v(1, 1), 1, 1, descv, &
+#if defined(__DLAF)
+    CALL cp_pdsyevd_dlaf('V', 'U', n, m(:, :), 1, 1, descm, eigenvalues(:), v(:,:), 1, 1, descv, &
+                          work(:), lwork, iwork(:), liwork, myinfo)
+#else ! ScaLAPACK
+    CALL pdsyevd('V', 'U', n, m(1, 1), 1, 1, descm, eigenvalues(1), v(1, 1), 1, 1, descv, &
                    work(1), lwork, iwork(1), liwork, myinfo)
+#endif
 
 #if defined (__HAS_IEEE_EXCEPTIONS)
       CALL ieee_set_halting_mode(IEEE_ALL, halt)
