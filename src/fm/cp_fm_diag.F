@@ -121,7 +121,7 @@ CONTAINS
 
       fallback_applied = .FALSE.
 
-      IF (diag_lib == "ScaLAPACK" .or. diag_lib == "DLA-Future") THEN ! TODO: do this properly?
+      IF (diag_lib == "ScaLAPACK" .OR. diag_lib == "DLA-Future") THEN ! TODO: do this properly?
          diag_type = DIAG_TYPE_SCALAPACK
       ELSE IF (diag_lib == "ELPA") THEN
 #if defined (__ELPA)
@@ -549,11 +549,11 @@ CONTAINS
 #endif
 
 #if defined(__DLAF)
-    CALL cp_pdsyevd_dlaf('V', 'U', n, m(:, :), 1, 1, descm, eigenvalues(:), v(:,:), 1, 1, descv, &
-                          work(:), lwork, iwork(:), liwork, myinfo)
+      CALL cp_pdsyevd_dlaf('V', 'U', n, m(:, :), 1, 1, descm, eigenvalues(:), v(:, :), 1, 1, descv, &
+                           work(:), lwork, iwork(:), liwork, myinfo)
 #else
-    ! ScaLAPACK
-    CALL pdsyevd('V', 'U', n, m(1, 1), 1, 1, descm, eigenvalues(1), v(1, 1), 1, 1, descv, &
+      ! ScaLAPACK
+      CALL pdsyevd('V', 'U', n, m(1, 1), 1, 1, descm, eigenvalues(1), v(1, 1), 1, 1, descv, &
                    work(1), lwork, iwork(1), liwork, myinfo)
 #endif
 

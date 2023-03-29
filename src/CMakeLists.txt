@@ -1314,7 +1314,7 @@ if(CP2K_USE_LIBTORCH)
   list(APPEND CP2K_SRCS_CPP torch_c_api.cpp)
 endif()
 
-if (CP2K_USE_DLAF)
+if(CP2K_USE_DLAF)
   list(APPEND CP2K_SRCS_C fm/cholesky_dlaf.cpp)
   list(APPEND CP2K_SRCS_F fm/dlaf.F)
 endif()

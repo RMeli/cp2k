@@ -47,10 +47,10 @@ if(GenericBLAS_FOUND)
     add_library(CP2K::GenericBLAS::blas INTERFACE IMPORTED)
   endif()
   set_property(TARGET CP2K::GenericBLAS::blas PROPERTY INTERFACE_LINK_LIBRARIES
-                                                      ${GenericBLAS_LIBRARIES})
+                                                       ${GenericBLAS_LIBRARIES})
   set_property(
     TARGET CP2K::GenericBLAS::blas PROPERTY INTERFACE_INCLUDE_DIRECTORIES
-                                           ${GenericBLAS_INCLUDE_DIRS})
+                                            ${GenericBLAS_INCLUDE_DIRS})
 endif()
 
 # prevent clutter in cache
