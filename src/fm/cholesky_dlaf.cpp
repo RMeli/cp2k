@@ -339,7 +339,7 @@ void pdsyevd_dlaf_cpp(char jobz__, char uplo__, int n__,
   // uplo__ checked above
   auto dlaf_uplo = uplo__ == 'U' or uplo__ == 'u' ? blas::Uplo::Upper : blas::Uplo::Lower;
 
-  //std::cerr << "Calling DLAF eigensolver..." << std::endl;
+  std::cerr << "Calling DLAF eigensolver..." << std::endl;
 
   // WARN: Hard-coded to LOWER, use dlaf_uplo instead
   auto [eigenvalues, eigenvectors] = 
@@ -347,7 +347,7 @@ void pdsyevd_dlaf_cpp(char jobz__, char uplo__, int n__,
             comm_grid, blas::Uplo::Lower, matrix.get()
         );
 
-  //std::cerr << "DLAF eigensolver terminated successfully!" << std::endl;
+  std::cerr << "DLAF eigensolver terminated successfully!" << std::endl;
 
   // TODO: Remove?
   eigenvectors.waitLocalTiles();

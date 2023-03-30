@@ -579,7 +579,11 @@ CONTAINS
 
       SELECT CASE (i_diag)
       CASE (do_diag_scalapack)
+#ifndef __DLAF
          globenv%diag_library = "ScaLAPACK"
+#else
+         globenv%diag_library = "DLA-Future"
+#endif
       CASE (do_diag_elpa)
          globenv%diag_library = "ELPA"
          CALL cite_reference(Marek2014)
