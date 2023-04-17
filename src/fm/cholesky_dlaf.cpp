@@ -298,6 +298,10 @@ void pdsyevd_dlaf_cpp(char jobz__, char uplo__, int n__,
   Communicator world(comm);
 
   DLAF_MPI_CHECK_ERROR(MPI_Barrier(world));
+  
+  // TODO: Remove
+  int rank = 0;
+  MPI_Comm_rank(comm, &rank);
 
   int size;
   MPI_Comm_size(comm, &size);
@@ -339,28 +343,25 @@ void pdsyevd_dlaf_cpp(char jobz__, char uplo__, int n__,
   // uplo__ checked above
   auto dlaf_uplo = uplo__ == 'U' or uplo__ == 'u' ? blas::Uplo::Upper : blas::Uplo::Lower;
 
-  std::cerr << "Calling DLAF eigensolver..." << std::endl;
-
-  // WARN: Hard-coded to LOWER, use dlaf_uplo instead
-  auto [eigenvalues, eigenvectors] = 
-        dlaf::eigensolver::eigensolver<Backend::Default, Device::Default, T>(
-            comm_grid, blas::Uplo::Lower, matrix.get()
-        );
-
-  std::cerr << "DLAF eigensolver terminated successfully!" << std::endl;
-
-  // TODO: Remove?
-  eigenvectors.waitLocalTiles();
-  DLAF_MPI_CHECK_ERROR(MPI_Barrier(world));
-
+  if (rank == 0) std::cout << "Calling DLAF eigensolver..." << std::endl;
+  
   // WARN: Does this automatically transfer GPU matrices to the CPU?
   // Create DLAF matrices from CP2K-allocated ones
   Matrix<T, dlaf::Device::CPU> eigenvectors_cp2k(distribution, layout, z__); // Distributed eigenvectors
   auto eigenvalues_cp2k = dlaf::matrix::createMatrixFromColMajor<dlaf::Device::CPU>({n__, 1}, {block_size.rows(), 1}, n__, w__);
 
+  // WARN: Hard-coded to LOWER, use dlaf_uplo instead
+  dlaf::eigensolver::eigensolver<Backend::Default, Device::Default, T>(comm_grid, blas::Uplo::Lower, matrix.get(), eigenvalues_cp2k, eigenvectors_cp2k);
+
+  if(rank == 0) std::cout << "DLAF eigensolver terminated successfully!" << std::endl;
+
+  // TODO: Remove?
+  eigenvectors_cp2k.waitLocalTiles();
+  DLAF_MPI_CHECK_ERROR(MPI_Barrier(world));
+
   // Copy DLAF results into CP2K-allocated memory
-  dlaf::matrix::copy(eigenvectors, eigenvectors_cp2k);
-  dlaf::matrix::copy(eigenvalues, eigenvalues_cp2k);
+  //dlaf::matrix::copy(eigenvectors, eigenvectors_cp2k);
+  //dlaf::matrix::copy(eigenvalues, eigenvalues_cp2k);
 
   pika::suspend();
   info__ = 0;
