@@ -8,58 +8,34 @@
 // SPDX-License-Identifier: BSD-3-Clause
 //
 
+
 #include <blas/util.hh>
 #include <cstdlib>
-#include <iostream>
+
+#include <dlaf/communication/communicator.h>
+#include <dlaf/communication/communicator_grid.h>
+#include <dlaf/communication/error.h>
+#include <dlaf/factorization/cholesky.h>
+#include <dlaf/eigensolver/eigensolver.h>
+#include <dlaf/init.h>
+#include <dlaf/matrix/distribution.h>
+#include <dlaf/matrix/index.h>
+#include <dlaf/matrix/layout_info.h>
+#include <dlaf/matrix/matrix.h>
+#include <dlaf/matrix/matrix_mirror.h>
+#include <dlaf/types.h>
 #include <fstream>
+#include <iostream>
 #include <mpi.h>
-#include <pika/future.hpp>
+#include <pika/execution.hpp>
 #include <pika/init.hpp>
 #include <pika/program_options.hpp>
 #include <pika/runtime.hpp>
-#include <pika/unwrap.hpp>
 
-#include "dlaf/auxiliary/norm.h"
-#include "dlaf/blas/tile.h"
-#include "dlaf/common/format_short.h"
-#include "dlaf/common/timer.h"
-#include "dlaf/communication/communicator_grid.h"
-#include "dlaf/communication/error.h"
-#include "dlaf/communication/init.h"
-#include "dlaf/communication/sync/broadcast.h"
-#include "dlaf/eigensolver/eigensolver.h"
-#include "dlaf/eigensolver/get_band_size.h"
-#include "dlaf/factorization/cholesky.h"
-#include "dlaf/init.h"
-#include "dlaf/matrix/copy.h"
-#include "dlaf/matrix/matrix.h"
-#include "dlaf/matrix/matrix_mirror.h"
-#include "dlaf/types.h"
-#include "dlaf/util_matrix.h"
-#include "dlaf/matrix/print_numpy.h"
-
-using pika::execution::experimental::keep_future;
-using pika::execution::experimental::start_detached;
-using pika::execution::experimental::when_all;
-
-using dlaf::Backend;
-using dlaf::Coord;
-using dlaf::DefaultDevice_v;
-using dlaf::Device;
-using dlaf::GlobalElementIndex;
-using dlaf::GlobalElementSize;
-using dlaf::GlobalTileIndex;
-using dlaf::LocalTileIndex;
-using dlaf::Matrix;
-using dlaf::SizeType;
-using dlaf::TileElementIndex;
-using dlaf::TileElementSize;
-using dlaf::comm::Communicator;
-using dlaf::comm::CommunicatorGrid;
-using dlaf::comm::Index2D;
-using dlaf::common::Ordering;
-using dlaf::internal::transformDetach;
-using dlaf::matrix::MatrixMirror;
+// TODO: Remove once https://github.com/eth-cscs/DLA-Future/pull/668 is
+// merged.
+#include <mkl_service.h>
+#include <omp.h>
 
 static bool dlaf_init_ = false;
 
@@ -84,38 +60,24 @@ static MPI_Comm get_communicator(const int grid_context) {
   return comm;
 }
 
-static int get_grid_context(int *desca)
-{
-  return desca[1];
-}
+static int get_grid_context(int *desca) { return desca[1]; }
 
 extern "C" void dlaf_init() {
   if (!dlaf_init_) {
-    using namespace pika::program_options;
     int argc = 1;
+    const char *const argv[] = {"cp2k", nullptr};
 
-    // std::string tmp = "--pika:threads=";
-    // auto my_string = getenv("OMP_NUM_THREADS");
-    // if(my_string == nullptr) {
-    //   tmp += std::to_string(1);
-    // } else {
-    //   tmp += std::string(my_string);
-    // }
+    pika::program_options::options_description desc("cp2k");
+    desc.add(dlaf::getOptionsDescription());
 
-    // TODO something wrong with passing command line arguments by hand
-    const char *argv[] = {"--pika:print-bind", /*tmp.c_str(),*/ nullptr};
-    options_description desc_commandline("cp2k_dlaf");
-    //desc_commandline.add(dlaf::miniapp::getMiniappOptionsDescription());
-    desc_commandline.add(dlaf::getOptionsDescription());
-    
-    /* pika initialization. Last parameter to be added. */
+    /* pika initialization */
     pika::init_params p;
-    p.desc_cmdline = desc_commandline;
     p.rp_callback = dlaf::initResourcePartitionerHandler;
+    p.desc_cmdline = desc;
     pika::start(nullptr, argc, argv, p);
-    const int argc_dla = 1;
-    const char *argv_dla[] = {"cp2k_dlaf", nullptr};
-    dlaf::initialize(argc_dla, argv_dla);
+
+    /* DLA-Future initialization */
+    dlaf::initialize(argc, argv);
     dlaf_init_ = true;
     pika::suspend();
   }
@@ -123,11 +85,22 @@ extern "C" void dlaf_init() {
 
 extern "C" void dlaf_finalize() {
   pika::resume();
-  pika::async([]{pika::finalize();});
+  pika::async([] { pika::finalize(); });
   dlaf::finalize();
   pika::stop();
   dlaf_init_ = false;
 }
+
+class single_threaded_omp {
+public:
+  single_threaded_omp() : old_threads(mkl_get_max_threads()) {
+    mkl_set_num_threads(1);
+  }
+  ~single_threaded_omp() { mkl_set_num_threads(old_threads); }
+
+private:
+  int old_threads;
+};
 
 template <typename T> void pxpotrf_dla(
     char uplo__, int n__, T* a__, int ia__, int ja__, int* desca__,
@@ -137,7 +110,7 @@ template <typename T> void pxpotrf_dla(
 
   if (uplo__ != 'U' && uplo__ != 'u' && uplo__ != 'L' && uplo__ != 'l') {
     std::cerr << "DLA Cholesky : The UpLo parameter has a incorrect value. ";
-    std::cerr << "Please check the scalapack documentation.\n";
+    std::cerr << "Please check the ScaLAPACK documentation.\n";
     info__ = -1;
     return;
   }
@@ -146,17 +119,19 @@ template <typename T> void pxpotrf_dla(
   if (desca__[0] != 1) {
     // only treat dense matrices
     info__ = -1;
+    std::cerr << "ERROR: DLA-Future should only treat dense matrices.\n";
     return;
   }
 
   if (!dlaf_init_) {
-    std::cout << "Error: DLA Future must be initialized\n";
+    std::cerr << "Error: DLA Future must be initialized.\n";
     info__ = -1;
   }
 
-  using dlaf::common::make_data;
+  single_threaded_omp sto{};
 
   pika::resume();
+
   // matrix sizes
   int m, n;
 
@@ -172,15 +147,16 @@ template <typename T> void pxpotrf_dla(
 
   // TODO
   // DONE - dlaf initialization
-  //      - matrix mirror
+  // DONE - matrix mirror
   // DONE - resume suspend pika runtime
   //      - general cleanup
   // DONE - fortran interface uplo
   //      - cblcs call
+  //      - remove omp/mkl_set_num_threads calls (will be handled by DLAF)
 
   int np, mp, size;
   MPI_Comm comm = get_communicator(desca__[1]);
-  Communicator world(comm);
+  dlaf::comm::Communicator world(comm);
   DLAF_MPI_CHECK_ERROR(MPI_Barrier(world));
   int dims[2] = {0, 0};
   int periods[2] = {0, 0};
@@ -188,12 +164,12 @@ template <typename T> void pxpotrf_dla(
   MPI_Comm_size(comm, &size);
   Cblacs_gridinfo(desca__[1], dims, dims + 1, coords, coords + 1);
 
-  CommunicatorGrid comm_grid(world, dims[0], dims[1], Ordering::RowMajor);
+  dlaf::comm::CommunicatorGrid comm_grid(world, dims[0], dims[1], dlaf::common::Ordering::RowMajor);
   
   // Allocate memory for the matrix
-  GlobalElementSize matrix_size(n, m);
-  TileElementSize block_size(nb, mb);
-  Index2D src_rank_index(0,0);
+  dlaf::GlobalElementSize matrix_size(n, m);
+  dlaf::TileElementSize block_size(nb, mb);
+  dlaf::comm::Index2D src_rank_index(0,0);
   dlaf::matrix::Distribution distribution(matrix_size,
                                           block_size,
                                           comm_grid.size(),
@@ -206,32 +182,24 @@ template <typename T> void pxpotrf_dla(
   const int ld_ = desca__[8];
 
   dlaf::matrix::LayoutInfo layout = colMajorLayout(distribution, ld_);
-  Matrix<T, Device::CPU> mat(std::move(distribution), layout, a__);
+  dlaf::matrix::Matrix<T, dlaf::Device::CPU> mat(std::move(distribution), layout, a__);
 
   {
-    using MatrixMirrorType = MatrixMirror<T,  Device::Default, Device::CPU>;
-    MatrixMirrorType matrix(mat);
+    dlaf::matrix::MatrixMirror<T, dlaf::Device::Default, dlaf::Device::CPU> matrix(mat);
 
     switch(uplo__) {
      case 'U':
      case 'u':
-       dlaf::factorization::cholesky<Backend::Default, Device::Default, T>(comm_grid, blas::Uplo::Upper, matrix.get());
+       dlaf::factorization::cholesky<dlaf::Backend::Default, dlaf::Device::Default, T>(comm_grid, blas::Uplo::Upper, matrix.get());
        break;
     case 'L':
     case 'l':
-      dlaf::factorization::cholesky<Backend::Default, Device::Default, T>(comm_grid, blas::Uplo::Lower, matrix.get());
+      dlaf::factorization::cholesky<dlaf::Backend::Default, dlaf::Device::Default, T>(comm_grid, blas::Uplo::Lower, matrix.get());
       break;
     default:
       break;
     }
-
-    // TODO: Can this be relaxed (removed)?
-    matrix.get().waitLocalTiles();
   } // Destroy MatrixMirror; copy results back to Device::CPU
-  
-  // TODO: Can this be relaxed (removed)?
-  mat.waitLocalTiles();
-  DLAF_MPI_CHECK_ERROR(MPI_Barrier(world));
   
   pika::suspend();
   info__ = 0;
@@ -273,6 +241,7 @@ void pdsyevd_dlaf_cpp(char jobz__, char uplo__, int n__,
 
   if (desca__[0] != 1) {
     info__ = -1; // only treat dense matrices
+    std::cerr << "ERROR: DLA-Future should only threat dense matrices.\n";
     return;
   }
 
@@ -281,7 +250,7 @@ void pdsyevd_dlaf_cpp(char jobz__, char uplo__, int n__,
     info__ = -1;
   }
 
-  using dlaf::common::make_data;
+  single_threaded_omp sto{};
 
   pika::resume();
 
@@ -295,7 +264,7 @@ void pdsyevd_dlaf_cpp(char jobz__, char uplo__, int n__,
 
   // Get MPI communicator from BLACS context
   MPI_Comm comm = get_communicator(desca__[1]); // From BLACS context
-  Communicator world(comm);
+  dlaf::comm::Communicator world(comm);
 
   DLAF_MPI_CHECK_ERROR(MPI_Barrier(world));
   
@@ -313,12 +282,12 @@ void pdsyevd_dlaf_cpp(char jobz__, char uplo__, int n__,
   Cblacs_gridinfo(desca__[1], &dims[0], &dims[1], &coords[0], &coords[1]);
 
   // Define DLAF communication grid (same size as BLACS grid)
-  CommunicatorGrid comm_grid(world, dims[0], dims[1], Ordering::RowMajor); // TODO: Is RowMajor correct here?
+  dlaf::comm::CommunicatorGrid comm_grid(world, dims[0], dims[1], dlaf::common::Ordering::RowMajor); // TODO: Is RowMajor correct here?
 
   // Allocate memory for the matrix
-  GlobalElementSize matrix_size(n, m);
-  TileElementSize block_size(nb, mb);
-  Index2D src_rank_index(0,0); // TODO: Get from BLACS?
+  dlaf::GlobalElementSize matrix_size(n, m);
+  dlaf::TileElementSize block_size(nb, mb);
+  dlaf::comm::Index2D src_rank_index(0,0); // TODO: Get from BLACS?
 
   // Contains information about size and distribution of the matrix
   dlaf::matrix::Distribution distribution(matrix_size,
@@ -331,37 +300,31 @@ void pdsyevd_dlaf_cpp(char jobz__, char uplo__, int n__,
   const int lda_ = desca__[8];
 
   // Contains information about how the elements of the matrix are stored (and where)
-  dlaf::matrix::LayoutInfo layout = colMajorLayout(distribution, lda_);
+  dlaf::matrix::LayoutInfo layout = dlaf::matrix::colMajorLayout(distribution, lda_);
 
   // DLAF matrix, manages the correct dependencies of taks involving tiles
-  // Not thread safe
-  Matrix<T, Device::CPU> host_matrix(distribution, layout, a__);
-
-  using MatrixMirrorType = MatrixMirror<T, dlaf::Device::Default, Device::CPU>;
-  MatrixMirrorType matrix(host_matrix);
+  dlaf::matrix::Matrix<T, dlaf::Device::CPU> host_matrix(distribution, layout, a__);
 
   // uplo__ checked above
   auto dlaf_uplo = uplo__ == 'U' or uplo__ == 'u' ? blas::Uplo::Upper : blas::Uplo::Lower;
 
-  if (rank == 0) std::cout << "Calling DLAF eigensolver..." << std::endl;
+  if (rank == 0) std::cerr << "Calling DLAF eigensolver..." << std::endl;
   
-  // WARN: Does this automatically transfer GPU matrices to the CPU?
   // Create DLAF matrices from CP2K-allocated ones
-  Matrix<T, dlaf::Device::CPU> eigenvectors_cp2k(distribution, layout, z__); // Distributed eigenvectors
+  dlaf::matrix::Matrix<T, dlaf::Device::CPU> eigenvectors_cp2k(distribution, layout, z__); // Distributed eigenvectors
   auto eigenvalues_cp2k = dlaf::matrix::createMatrixFromColMajor<dlaf::Device::CPU>({n__, 1}, {block_size.rows(), 1}, n__, w__);
+  
+  {
+    // Create matrix mirrors
+    dlaf::matrix::MatrixMirror<T, dlaf::Device::Default, dlaf::Device::CPU> matrix(host_matrix);
+    dlaf::matrix::MatrixMirror<T, dlaf::Device::Default, dlaf::Device::CPU> eigenvalues(eigenvalues_cp2k);
+    dlaf::matrix::MatrixMirror<T, dlaf::Device::Default, dlaf::Device::CPU> eigenvectors(eigenvectors_cp2k);
+  
+    // WARN: Hard-coded to LOWER, use dlaf_uplo instead
+    dlaf::eigensolver::eigensolver<dlaf::Backend::Default, dlaf::Device::Default, T>(comm_grid, blas::Uplo::Lower, matrix.get(), eigenvalues.get(), eigenvectors.get());
+  } // Destroy mirrors
 
-  // WARN: Hard-coded to LOWER, use dlaf_uplo instead
-  dlaf::eigensolver::eigensolver<Backend::Default, Device::Default, T>(comm_grid, blas::Uplo::Lower, matrix.get(), eigenvalues_cp2k, eigenvectors_cp2k);
-
-  if(rank == 0) std::cout << "DLAF eigensolver terminated successfully!" << std::endl;
-
-  // TODO: Remove?
-  eigenvectors_cp2k.waitLocalTiles();
-  DLAF_MPI_CHECK_ERROR(MPI_Barrier(world));
-
-  // Copy DLAF results into CP2K-allocated memory
-  //dlaf::matrix::copy(eigenvectors, eigenvectors_cp2k);
-  //dlaf::matrix::copy(eigenvalues, eigenvalues_cp2k);
+  if(rank == 0) std::cerr << "DLAF eigensolver terminated successfully!" << std::endl;
 
   pika::suspend();
   info__ = 0;
