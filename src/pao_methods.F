@@ -21,7 +21,6 @@ MODULE pao_methods
    USE cp_log_handling,                 ONLY: cp_get_default_logger,&
                                               cp_logger_type,&
                                               cp_to_string
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE dbcsr_api,                       ONLY: &
         dbcsr_add, dbcsr_binary_read, dbcsr_checksum, dbcsr_complete_redistribute, &
         dbcsr_copy_into_existing, dbcsr_create, dbcsr_desymmetrize, dbcsr_distribution_get, &
@@ -43,8 +42,7 @@ MODULE pao_methods
    USE machine,                         ONLY: m_walltime
    USE mathlib,                         ONLY: binomial,&
                                               diamat_all
-   USE message_passing,                 ONLY: mp_max,&
-                                              mp_sum
+   USE message_passing,                 ONLY: mp_para_env_type
    USE pao_ml,                          ONLY: pao_ml_forces
    USE pao_param,                       ONLY: pao_calc_AB,&
                                               pao_param_count
@@ -405,12 +403,10 @@ CONTAINS
 
       TYPE(atomic_kind_type), DIMENSION(:), POINTER      :: atomic_kind_set
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: matrix_s
-      TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
       TYPE(qs_kind_type), DIMENSION(:), POINTER          :: qs_kind_set
 
       CALL get_qs_env(qs_env, &
                       matrix_s=matrix_s, &
-                      particle_set=particle_set, &
                       atomic_kind_set=atomic_kind_set, &
                       qs_kind_set=qs_kind_set)
 
@@ -425,7 +421,6 @@ CONTAINS
       ! Can't use matrix_ks from ls_scf_qs_atomic_guess(), because it's not rotationally invariant.
       ! getting H0 directly from the atomic code
       CALL calculate_atomic_fock_matrix(pao%matrix_H0, &
-                                        particle_set, &
                                         atomic_kind_set, &
                                         qs_kind_set, &
                                         ounit=pao%iw)
@@ -692,8 +687,8 @@ CONTAINS
       LOGICAL                                            :: found
       REAL(dp)                                           :: delta, delta_max, eps, Gij_num
       REAL(dp), DIMENSION(:, :), POINTER                 :: block_G, block_X
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(ls_mstruct_type), POINTER                     :: ls_mstruct
+      TYPE(mp_para_env_type), POINTER                    :: para_env
 
       IF (pao%check_grad_tol < 0.0_dp) RETURN ! no checking
 
@@ -755,7 +750,7 @@ CONTAINS
          END DO
       END DO
 
-      CALL mp_max(delta_max, para_env%group)
+      CALL para_env%max(delta_max)
       IF (pao%iw > 0) WRITE (pao%iw, *) 'PAO| checked gradient, max delta:', delta_max
       IF (delta_max > pao%check_grad_tol) CALL cp_abort(__LOCATION__, &
                                                         "Analytic and numeric gradients differ too much:"//cp_to_string(delta_max))
@@ -963,7 +958,7 @@ CONTAINS
 
       INTEGER                                            :: handle, iatom, natoms
       REAL(dp), ALLOCATABLE, DIMENSION(:, :)             :: forces
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(pao_env_type), POINTER                        :: pao
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
 
@@ -992,7 +987,7 @@ CONTAINS
       IF (SIZE(pao%ml_training_set) > 0) &
          CALL pao_ml_forces(pao, qs_env, pao%matrix_G, forces)
 
-      CALL mp_sum(forces, para_env%group)
+      CALL para_env%sum(forces)
       DO iatom = 1, natoms
          particle_set(iatom)%f = particle_set(iatom)%f + forces(iatom, :)
       END DO

@@ -23,7 +23,6 @@ MODULE rpa_gw_im_time_util
                                               cp_fm_set_element,&
                                               cp_fm_to_fm,&
                                               cp_fm_type
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE dbcsr_api,                       ONLY: &
         dbcsr_add_on_diag, dbcsr_create, dbcsr_distribution_get, dbcsr_distribution_new, &
         dbcsr_distribution_release, dbcsr_distribution_type, dbcsr_filter, dbcsr_get_diag, &
@@ -40,10 +39,9 @@ MODULE rpa_gw_im_time_util
    USE kinds,                           ONLY: dp,&
                                               int_8
    USE mathconstants,                   ONLY: twopi
-   USE message_passing,                 ONLY: mp_alltoall,&
-                                              mp_dims_create,&
-                                              mp_request_type,&
-                                              mp_sum
+   USE message_passing,                 ONLY: mp_dims_create,&
+                                              mp_para_env_type,&
+                                              mp_request_type
    USE mp2_types,                       ONLY: integ_mat_buffer_type
    USE particle_methods,                ONLY: get_particle_set
    USE particle_types,                  ONLY: particle_type
@@ -95,7 +93,7 @@ CONTAINS
 !> \param t_3c_overl_nnP_ic_reflected ...
 !> \param qs_env ...
 !> \param unit_nr ...
-!> \param do_beta ...
+!> \param do_alpha ...
 ! **************************************************************************************************
    SUBROUTINE get_tensor_3c_overl_int_gw(t_3c_overl_int, t_3c_O_compressed, t_3c_O_ind, &
                                          t_3c_overl_int_ao_mo, t_3c_O_mo_compressed, t_3c_O_mo_ind, &
@@ -106,7 +104,7 @@ CONTAINS
                                          para_env, &
                                          do_ic_model, &
                                          t_3c_overl_nnP_ic, t_3c_overl_nnP_ic_reflected, &
-                                         qs_env, unit_nr, do_beta)
+                                         qs_env, unit_nr, do_alpha)
 
       TYPE(dbt_type), DIMENSION(:, :)                    :: t_3c_overl_int
       TYPE(hfx_compression_type), DIMENSION(:, :, :)     :: t_3c_O_compressed
@@ -121,13 +119,13 @@ CONTAINS
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: matrix_s
       INTEGER, INTENT(IN)                                :: gw_corr_lev_occ, gw_corr_lev_virt, homo, &
                                                             nmo
-      TYPE(cp_para_env_type), INTENT(IN)                 :: para_env
+      TYPE(mp_para_env_type), INTENT(IN)                 :: para_env
       LOGICAL, INTENT(IN)                                :: do_ic_model
       TYPE(dbt_type)                                     :: t_3c_overl_nnP_ic, &
                                                             t_3c_overl_nnP_ic_reflected
       TYPE(qs_environment_type), POINTER                 :: qs_env
       INTEGER, INTENT(IN)                                :: unit_nr
-      LOGICAL, INTENT(IN), OPTIONAL                      :: do_beta
+      LOGICAL, INTENT(IN), OPTIONAL                      :: do_alpha
 
       CHARACTER(LEN=*), PARAMETER :: routineN = 'get_tensor_3c_overl_int_gw'
 
@@ -143,7 +141,7 @@ CONTAINS
       INTEGER, DIMENSION(3)                              :: bounds_3c, pdims
       INTEGER, DIMENSION(:), POINTER                     :: distp_1, distp_2, sizes_MO_blocked, &
                                                             sizes_MO_p1, sizes_MO_p2
-      LOGICAL                                            :: memory_info, my_do_beta
+      LOGICAL                                            :: memory_info, my_do_alpha
       REAL(dp)                                           :: compression_factor, memory_3c, occ
       REAL(KIND=dp), ALLOCATABLE, DIMENSION(:)           :: norm
       TYPE(atomic_kind_type), DIMENSION(:), POINTER      :: atomic_kind_set
@@ -169,8 +167,8 @@ CONTAINS
          unit_nr_prv = 0
       END IF
 
-      my_do_beta = .FALSE.
-      IF (PRESENT(do_beta)) my_do_beta = do_beta
+      my_do_alpha = .FALSE.
+      IF (PRESENT(do_alpha)) my_do_alpha = do_alpha
 
       CALL timeset(routineN, handle)
 
@@ -228,7 +226,7 @@ CONTAINS
       DEALLOCATE (basis_set_ao, basis_set_ri_aux)
 
       pdims = 0
-      CALL dbt_pgrid_create(para_env%group, pdims, pgrid_AO, &
+      CALL dbt_pgrid_create(para_env, pdims, pgrid_AO, &
                             tensor_dims=[SIZE(sizes_RI_split), SIZE(sizes_AO_split), SIZE(sizes_AO_split)])
 
       pdims_2d = 0
@@ -236,11 +234,11 @@ CONTAINS
 
       ! we iterate over MO blocks for saving memory during contraction, thus we should not parallelize over MO dimension
       pdims = [pdims_2d(1), pdims_2d(2), 1]
-      CALL dbt_pgrid_create(para_env%group, pdims, pgrid_MO, &
+      CALL dbt_pgrid_create(para_env, pdims, pgrid_MO, &
                             tensor_dims=[SIZE(sizes_RI_split), SIZE(sizes_AO_split), 1])
 
       pdims_2d = 0
-      CALL dbt_pgrid_create(para_env%group, pdims_2d, pgrid_2d, &
+      CALL dbt_pgrid_create(para_env, pdims_2d, pgrid_2d, &
                             tensor_dims=[SIZE(sizes_AO_split), nmo])
 
       CALL create_3c_tensor(t_3c_overl_int_ao_ao, dist1, dist2, dist3, pgrid_AO, &
@@ -304,7 +302,7 @@ CONTAINS
 
       IF (do_ic_model) THEN
          pdims = 0
-         CALL dbt_pgrid_create(para_env%group, pdims, pgrid_ic, &
+         CALL dbt_pgrid_create(para_env, pdims, pgrid_ic, &
                                tensor_dims=[SIZE(sizes_RI_split), nmo, nmo])
 
          CALL create_3c_tensor(t_3c_overl_int_mo_ao, dist1, dist2, dist3, pgrid_ic, &
@@ -333,7 +331,7 @@ CONTAINS
          CALL cp_dbcsr_m_by_n_from_row_template(mat_mo_coeff_gw_reflected, template=matrix_s(1)%matrix, n=nmo, &
                                                 sym=dbcsr_type_no_symmetry)
 
-         CALL reflect_mat_row(mat_mo_coeff_gw_reflected, mat_mo_coeff_gw, para_env, qs_env, unit_nr, do_beta=my_do_beta)
+         CALL reflect_mat_row(mat_mo_coeff_gw_reflected, mat_mo_coeff_gw, para_env, qs_env, unit_nr, do_alpha=my_do_alpha)
 
          ! normalize reflected MOs (they are not properly normalized since high angular momentum basis functions
          ! of the image molecule are not exactly reflected at the image plane (sign problem in p_z function)
@@ -365,7 +363,7 @@ CONTAINS
          norm = 0.0_dp
 
          CALL dbcsr_get_diag(mat_norm, norm)
-         CALL mp_sum(norm, para_env%group)
+         CALL para_env%sum(norm)
 
          DO imo = bounds(1, 1), bounds(2, 1)
             norm(imo) = 1.0_dp/SQRT(norm(imo))
@@ -414,7 +412,7 @@ CONTAINS
          CALL compress_tensor(t_3c_overl_int_ao_mo, t_3c_O_mo_ind, t_3c_O_mo_compressed, &
                               qs_env%mp2_env%ri_rpa_im_time%eps_compress, memory_3c)
 
-         CALL mp_sum(memory_3c, para_env%group)
+         CALL para_env%sum(memory_3c)
          compression_factor = REAL(nze, dp)*1.0E-06*8.0_dp/memory_3c
 
          IF (unit_nr > 0) THEN
@@ -444,15 +442,15 @@ CONTAINS
 !> \param para_env ...
 !> \param qs_env ...
 !> \param unit_nr ...
-!> \param do_beta ...
+!> \param do_alpha ...
 ! **************************************************************************************************
-   SUBROUTINE reflect_mat_row(mat_reflected, mat_orig, para_env, qs_env, unit_nr, do_beta)
+   SUBROUTINE reflect_mat_row(mat_reflected, mat_orig, para_env, qs_env, unit_nr, do_alpha)
       TYPE(dbcsr_type), INTENT(INOUT)                    :: mat_reflected
       TYPE(dbcsr_type), INTENT(IN)                       :: mat_orig
-      TYPE(cp_para_env_type), INTENT(IN)                 :: para_env
+      TYPE(mp_para_env_type), INTENT(IN)                 :: para_env
       TYPE(qs_environment_type), POINTER                 :: qs_env
       INTEGER, INTENT(IN)                                :: unit_nr
-      LOGICAL, INTENT(IN)                                :: do_beta
+      LOGICAL, INTENT(IN)                                :: do_alpha
 
       CHARACTER(LEN=*), PARAMETER                        :: routineN = 'reflect_mat_row'
 
@@ -530,7 +528,7 @@ CONTAINS
 
       END DO
 
-      IF (unit_nr > 0 .AND. .NOT. do_beta) THEN
+      IF (unit_nr > 0 .AND. do_alpha) THEN
          WRITE (unit_nr, '(T3,A,T70,F9.2,A2)') 'IC_MODEL| Average distance of the molecule to the image plane:', &
             avg_z_dist*0.529_dp, ' A'
          WRITE (unit_nr, '(T3,A,T70,F9.2,A2)') 'IC_MODEL| Minimum distance of the molecule to the image plane:', &
@@ -611,7 +609,7 @@ CONTAINS
 
          END DO
 
-         CALL mp_alltoall(sizes_send, sizes_rec, 2, para_env%group)
+         CALL para_env%alltoall(sizes_send, sizes_rec, 2)
 
          DO imepos = 0, para_env%num_pe - 1
             num_entries_rec(imepos) = sizes_rec(2*imepos)

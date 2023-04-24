@@ -16,7 +16,6 @@ MODULE input_restart_force_eval
    USE cp_linked_list_input,            ONLY: cp_sll_val_create,&
                                               cp_sll_val_get_length,&
                                               cp_sll_val_type
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE cp_subsys_types,                 ONLY: cp_subsys_get,&
                                               cp_subsys_type
    USE cp_units,                        ONLY: cp_unit_from_cp2k
@@ -46,7 +45,7 @@ MODULE input_restart_force_eval
                                               val_type
    USE kinds,                           ONLY: default_string_length,&
                                               dp
-   USE message_passing,                 ONLY: mp_sum
+   USE message_passing,                 ONLY: mp_para_env_type
    USE molecule_kind_types,             ONLY: get_molecule_kind
    USE molecule_list_types,             ONLY: molecule_list_type
    USE molecule_types,                  ONLY: get_molecule,&
@@ -239,9 +238,9 @@ CONTAINS
                                                             nparticle_kind, nparticle_local
       INTEGER, ALLOCATABLE, DIMENSION(:, :)              :: ascii
       TYPE(atomic_kind_list_type), POINTER               :: atomic_kinds
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(cp_subsys_type), POINTER                      :: subsys
       TYPE(distribution_1d_type), POINTER                :: local_particles
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(particle_list_type), POINTER                  :: particles
 
       CALL force_env_get(force_env, subsys=subsys, para_env=para_env)
@@ -268,7 +267,7 @@ CONTAINS
             END DO
          END DO
 
-         CALL mp_sum(ascii, para_env%group)
+         CALL para_env%sum(ascii)
 
          CALL section_rng_val_set(rng_section=rng_section, nsize=nparticle, ascii=ascii)
 
@@ -302,9 +301,9 @@ CONTAINS
       LOGICAL                                            :: scale, use_ref_cell
       REAL(KIND=dp)                                      :: conv_factor
       TYPE(cell_type), POINTER                           :: cell
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(cp_subsys_type), POINTER                      :: subsys
       TYPE(molecule_list_type), POINTER                  :: molecules
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(multipole_type), POINTER                      :: multipoles
       TYPE(particle_list_type), POINTER                  :: core_particles, particles, &
                                                             shell_particles
@@ -338,7 +337,7 @@ CONTAINS
             CALL section_vals_val_get(subsys_section, "TOPOLOGY%COORD_FILE_NAME", &
                                       c_val=coord_file_name)
             output_unit = 0
-            IF (para_env%ionode) THEN
+            IF (para_env%is_source()) THEN
                CALL open_file(file_name=TRIM(ADJUSTL(coord_file_name)), &
                               file_action="READWRITE", &
                               file_form="FORMATTED", &

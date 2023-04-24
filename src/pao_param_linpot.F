@@ -13,7 +13,6 @@ MODULE pao_param_linpot
    USE atomic_kind_types,               ONLY: get_atomic_kind
    USE basis_set_types,                 ONLY: gto_basis_set_type
    USE cp_control_types,                ONLY: dft_control_type
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE dbcsr_api,                       ONLY: &
         dbcsr_create, dbcsr_get_block_p, dbcsr_get_info, dbcsr_iterator_blocks_left, &
         dbcsr_iterator_next_block, dbcsr_iterator_start, dbcsr_iterator_stop, dbcsr_iterator_type, &
@@ -23,9 +22,7 @@ MODULE pao_param_linpot
    USE machine,                         ONLY: m_flush
    USE mathlib,                         ONLY: diamat_all
    USE message_passing,                 ONLY: mp_comm_type,&
-                                              mp_min,&
-                                              mp_sum,&
-                                              mp_sync
+                                              mp_para_env_type
    USE pao_input,                       ONLY: pao_fock_param,&
                                               pao_rotinv_param
    USE pao_linpot_full,                 ONLY: linpot_full_calc_terms,&
@@ -70,9 +67,9 @@ CONTAINS
       INTEGER, DIMENSION(:), POINTER                     :: blk_sizes_pri, col_blk_size, row_blk_size
       REAL(dp), DIMENSION(:, :), POINTER                 :: block_V_terms
       REAL(dp), DIMENSION(:, :, :), POINTER              :: V_blocks
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_iterator_type)                          :: iter
       TYPE(dft_control_type), POINTER                    :: dft_control
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
 
       CALL timeset(routineN, handle)
@@ -129,7 +126,7 @@ CONTAINS
       IF (pao%precondition) &
          CALL pao_param_linpot_preconditioner(pao)
 
-      CALL mp_sync(para_env%group) ! ensure that timestop is not called too early
+      CALL para_env%sync() ! ensure that timestop is not called too early
 
       CALL timestop(handle)
    END SUBROUTINE pao_param_init_linpot
@@ -507,15 +504,15 @@ CONTAINS
 
       IF (PRESENT(penalty)) THEN
          ! sum penalty energies across ranks
-         CALL mp_sum(penalty, group)
-         CALL mp_sum(regu_energy, group)
+         CALL group%sum(penalty)
+         CALL group%sum(regu_energy)
          penalty = penalty + regu_energy
       END IF
 
       ! print stuff, but not during second invocation for forces
       IF (.NOT. PRESENT(forces)) THEN
          ! print eigenvalues from fock-layer
-         CALL mp_sum(evals, group)
+         CALL group%sum(evals)
          IF (pao%iw_fockev > 0) THEN
             DO iatom = 1, natoms
                WRITE (pao%iw_fockev, *) "PAO| atom:", iatom, " fock evals around gap:", evals(:, iatom)
@@ -523,7 +520,7 @@ CONTAINS
             CALL m_flush(pao%iw_fockev)
          END IF
          ! print homo-lumo gap encountered by fock-layer
-         CALL mp_min(gaps, group)
+         CALL group%min(gaps)
          IF (pao%iw_gap > 0) THEN
             DO iatom = 1, natoms
                WRITE (pao%iw_gap, *) "PAO| atom:", iatom, " fock gap:", gaps(iatom)

@@ -28,7 +28,6 @@ MODULE qs_cdft_utils
                                               cp_to_string
    USE cp_output_handling,              ONLY: cp_print_key_finished_output,&
                                               cp_print_key_unit_nr
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE cp_realspace_grid_cube,          ONLY: cp_pw_to_cube
    USE cp_units,                        ONLY: cp_unit_from_cp2k
    USE grid_api,                        ONLY: GRID_FUNC_AB,&
@@ -49,6 +48,7 @@ MODULE qs_cdft_utils
    USE kinds,                           ONLY: default_path_length,&
                                               dp
    USE memory_utilities,                ONLY: reallocate
+   USE message_passing,                 ONLY: mp_para_env_type
    USE outer_scf_control_types,         ONLY: outer_scf_read_parameters
    USE particle_list_types,             ONLY: particle_list_type
    USE particle_types,                  ONLY: particle_type
@@ -119,9 +119,9 @@ CONTAINS
       TYPE(cdft_group_type), DIMENSION(:), POINTER       :: group
       TYPE(cell_type), POINTER                           :: cell
       TYPE(cp_logger_type), POINTER                      :: logger
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dft_control_type), POINTER                    :: dft_control
       TYPE(hirshfeld_type), POINTER                      :: cavity_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(particle_list_type), POINTER                  :: particles
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
       TYPE(pw_env_type), POINTER                         :: pw_env
@@ -429,7 +429,7 @@ CONTAINS
                                            middle_name="BECKE_CAVITY", &
                                            extension=".cube", file_position="REWIND", &
                                            log_filename=.FALSE., mpi_io=mpi_io)
-            IF (para_env%ionode .AND. unit_nr .LT. 1) &
+            IF (para_env%is_source() .AND. unit_nr .LT. 1) &
                CALL cp_abort(__LOCATION__, &
                              "Please turn on PROGRAM_RUN_INFO to print cavity")
             CALL get_qs_env(qs_env, subsys=subsys)
@@ -1271,8 +1271,8 @@ CONTAINS
       LOGICAL                                            :: mpi_io
       TYPE(cdft_control_type), POINTER                   :: cdft_control
       TYPE(cp_logger_type), POINTER                      :: logger
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dft_control_type), POINTER                    :: dft_control
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(particle_list_type), POINTER                  :: particles
       TYPE(qs_subsys_type), POINTER                      :: subsys
       TYPE(section_vals_type), POINTER                   :: cdft_constraint_section
@@ -1294,7 +1294,7 @@ CONTAINS
                                         extension=".cube", file_position="REWIND", &
                                         log_filename=.FALSE., mpi_io=mpi_io)
          ! Note PROGRAM_RUN_INFO section neeeds to be active!
-         IF (para_env%ionode .AND. unit_nr .LT. 1) &
+         IF (para_env%is_source() .AND. unit_nr .LT. 1) &
             CALL cp_abort(__LOCATION__, &
                           "Please turn on PROGRAM_RUN_INFO to print CDFT weight function.")
 
@@ -1321,8 +1321,8 @@ CONTAINS
       LOGICAL                                            :: mpi_io
       TYPE(cdft_control_type), POINTER                   :: cdft_control
       TYPE(cp_logger_type), POINTER                      :: logger
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dft_control_type), POINTER                    :: dft_control
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(particle_list_type), POINTER                  :: particles
       TYPE(pw_env_type), POINTER                         :: pw_env
       TYPE(qs_subsys_type), POINTER                      :: subsys

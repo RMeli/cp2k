@@ -22,10 +22,6 @@ MODULE replica_methods
                                               cp_logger_type,&
                                               cp_to_string
    USE cp_output_handling,              ONLY: cp_add_iter_level
-   USE cp_para_env,                     ONLY: cp_cart_create,&
-                                              cp_para_env_create
-   USE cp_para_types,                   ONLY: cp_para_cart_type,&
-                                              cp_para_env_type
    USE cp_result_types,                 ONLY: cp_result_create,&
                                               cp_result_retain
    USE cp_subsys_types,                 ONLY: cp_subsys_get,&
@@ -48,11 +44,9 @@ MODULE replica_methods
                                               section_vals_write
    USE kinds,                           ONLY: default_path_length,&
                                               dp
-   USE message_passing,                 ONLY: mp_cart_create,&
-                                              mp_cart_sub,&
-                                              mp_comm_null,&
-                                              mp_comm_type,&
-                                              mp_sum
+   USE message_passing,                 ONLY: mp_comm_null,&
+                                              mp_para_cart_type,&
+                                              mp_para_env_type
    USE qs_environment_types,            ONLY: get_qs_env,&
                                               qs_environment_type,&
                                               set_qs_env
@@ -95,7 +89,7 @@ CONTAINS
    SUBROUTINE rep_env_create(rep_env, para_env, input, input_declaration, nrep, prep, &
                              sync_v, keep_wf_history, row_force)
       TYPE(replica_env_type), POINTER                    :: rep_env
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(section_vals_type), POINTER                   :: input
       TYPE(section_type), POINTER                        :: input_declaration
       INTEGER                                            :: nrep, prep
@@ -107,12 +101,10 @@ CONTAINS
                                                             nrep_local, unit_nr
       INTEGER, ALLOCATABLE, DIMENSION(:, :)              :: gridinfo
       INTEGER, DIMENSION(2)                              :: dims, pos
-      LOGICAL, DIMENSION(2)                              :: rdim
       TYPE(cp_logger_type), POINTER                      :: logger
-      TYPE(cp_para_cart_type), POINTER                   :: cart
-      TYPE(cp_para_env_type), POINTER                    :: para_env_f, para_env_full, &
+      TYPE(mp_para_cart_type), POINTER                   :: cart
+      TYPE(mp_para_env_type), POINTER                    :: para_env_f, para_env_full, &
                                                             para_env_inter_rep
-      TYPE(mp_comm_type)                                 :: comm_cart, comm_f, comm_inter_rep
 
       CPASSERT(.NOT. ASSOCIATED(rep_env))
       CPASSERT(ASSOCIATED(input_declaration))
@@ -132,26 +124,25 @@ CONTAINS
          WRITE (unit_nr, FMT="(T2,A)") "REPLICA| WARNING: number of processors is not divisible by the number of replicas"
          WRITE (unit_nr, FMT="(T2,A,I0,A)") "REPLICA| ", para_env%num_pe - dims(1)*dims(2), " MPI process(es) will be idle"
       END IF
-      CALL mp_cart_create(comm_old=para_env%group, ndims=2, dims=dims, pos=pos, comm_cart=comm_cart)
-      IF (comm_cart /= mp_comm_null) THEN
-         CALL cp_cart_create(cart, comm_cart, ndims=2, owns_group=.TRUE.)
-         NULLIFY (para_env_full)
-         CALL cp_para_env_create(para_env_full, comm_cart, owns_group=.FALSE.)
-         rdim(3 - forcedim) = .FALSE.
-         rdim(forcedim) = .TRUE.
-         CALL mp_cart_sub(comm=comm_cart, rdim=rdim, sub_comm=comm_f)
-         CALL cp_para_env_create(para_env_f, comm_f, owns_group=.TRUE.)
-         rdim(3 - forcedim) = .TRUE.
-         rdim(forcedim) = .FALSE.
-         CALL mp_cart_sub(comm=comm_cart, rdim=rdim, sub_comm=comm_inter_rep)
-         CALL cp_para_env_create(para_env_inter_rep, comm_inter_rep, &
-                                 owns_group=.TRUE.)
+      ALLOCATE (cart)
+      CALL cart%create(comm_old=para_env, ndims=2, dims=dims)
+      IF (cart /= mp_comm_null) THEN
+         pos = cart%mepos_cart
+         ALLOCATE (para_env_full)
+         para_env_full = cart
+         ALLOCATE (para_env_f)
+         CALL para_env_f%from_split(cart, pos(3 - forcedim))
+         ALLOCATE (para_env_inter_rep)
+         CALL para_env_inter_rep%from_split(cart, pos(forcedim))
          ALLOCATE (rep_env)
+      ELSE
+         pos = -1
+         DEALLOCATE (cart)
       END IF
       ALLOCATE (gridinfo(2, 0:para_env%num_pe - 1))
       gridinfo = 0
       gridinfo(:, para_env%mepos) = pos
-      CALL mp_sum(gridinfo, para_env%group)
+      CALL para_env%sum(gridinfo)
       IF (unit_nr > 0) THEN
          WRITE (unit_nr, FMT="(T2,A,T71,I10)") "REPLICA| layout of the replica grid, number of groups ", para_env_inter_rep%num_pe
          WRITE (unit_nr, FMT="(T2,A,T71,I10)") "REPLICA| layout of the replica grid, size of each group", para_env_f%num_pe
@@ -178,15 +169,15 @@ CONTAINS
          NULLIFY (rep_env%results)
 
          rep_env%force_dim = forcedim
-         rep_env%my_rep_group = cart%mepos(3 - forcedim)
+         rep_env%my_rep_group = cart%mepos_cart(3 - forcedim)
          ALLOCATE (rep_env%inter_rep_rank(0:para_env_inter_rep%num_pe - 1), &
                    rep_env%force_rank(0:para_env_f%num_pe - 1))
          rep_env%inter_rep_rank = 0
          rep_env%inter_rep_rank(rep_env%my_rep_group) = para_env_inter_rep%mepos
-         CALL mp_sum(rep_env%inter_rep_rank, para_env_inter_rep%group)
+         CALL para_env_inter_rep%sum(rep_env%inter_rep_rank)
          rep_env%force_rank = 0
-         rep_env%force_rank(cart%mepos(forcedim)) = para_env_f%mepos
-         CALL mp_sum(rep_env%force_rank, para_env_f%group)
+         rep_env%force_rank(cart%mepos_cart(forcedim)) = para_env_f%mepos
+         CALL para_env_f%sum(rep_env%force_rank)
 
          CALL section_vals_val_get(input, "GLOBAL%PROJECT_NAME", &
                                    c_val=input_file_path)
@@ -209,7 +200,7 @@ CONTAINS
          ! Dump an input file to warm-up new force_eval structures and
          ! delete them immediately afterwards..
          input_file_path(lp + 1:LEN(input_file_path)) = ".inp"
-         IF (para_env_f%ionode) THEN
+         IF (para_env_f%is_source()) THEN
             CALL open_file(file_name=TRIM(input_file_path), file_status="UNKNOWN", &
                            file_form="FORMATTED", file_action="WRITE", &
                            unit_number=unit_nr)
@@ -217,11 +208,11 @@ CONTAINS
             CALL close_file(unit_nr)
          END IF
          CALL create_force_env(new_env_id, input_declaration, input_file_path, &
-                               output_file_path, para_env_f%group, ierr=ierr)
+                               output_file_path, para_env_f, ierr=ierr)
          CPASSERT(ierr == 0)
 
          ! Delete input files..
-         IF (para_env_f%ionode) THEN
+         IF (para_env_f%is_source()) THEN
             CALL open_file(file_name=TRIM(input_file_path), file_status="OLD", &
                            file_form="FORMATTED", file_action="READ", unit_number=unit_nr)
             CALL close_file(unit_number=unit_nr, file_status="DELETE")

@@ -27,7 +27,6 @@ MODULE qmmm_image_charge
                                               cp_print_key_generate_filename,&
                                               cp_print_key_should_output,&
                                               cp_print_key_unit_nr
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE eri_mme_integrate,               ONLY: eri_mme_2c_integrate
    USE input_constants,                 ONLY: calc_always,&
                                               calc_once,&
@@ -41,8 +40,7 @@ MODULE qmmm_image_charge
                                               dp
    USE mathconstants,                   ONLY: pi
    USE memory_utilities,                ONLY: reallocate
-   USE message_passing,                 ONLY: mp_bcast,&
-                                              mp_sum
+   USE message_passing,                 ONLY: mp_para_env_type
    USE pw_env_types,                    ONLY: pw_env_get,&
                                               pw_env_type
    USE pw_methods,                      ONLY: pw_integral_ab,&
@@ -355,8 +353,8 @@ CONTAINS
       REAL(KIND=dp), DIMENSION(3)                        :: ra
       REAL(KIND=dp), DIMENSION(:, :), POINTER            :: hab
       TYPE(cell_type), POINTER                           :: cell
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dft_control_type), POINTER                    :: dft_control
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(pw_env_type), POINTER                         :: pw_env
       TYPE(realspace_grid_desc_type), POINTER            :: auxbas_rs_desc
       TYPE(realspace_grid_type), POINTER                 :: rs_v
@@ -435,7 +433,7 @@ CONTAINS
 
       END DO
 
-      CALL mp_sum(int_res, para_env%group)
+      CALL para_env%sum(int_res)
 
       DEALLOCATE (hab, cores)
 
@@ -471,8 +469,8 @@ CONTAINS
       REAL(KIND=dp), DIMENSION(3)                        :: force_a, force_b, ra
       REAL(KIND=dp), DIMENSION(:, :), POINTER            :: hab, pab
       TYPE(cell_type), POINTER                           :: cell
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dft_control_type), POINTER                    :: dft_control
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(pw_env_type), POINTER                         :: pw_env
       TYPE(realspace_grid_desc_type), POINTER            :: auxbas_rs_desc
       TYPE(realspace_grid_type), POINTER                 :: rs_v
@@ -559,7 +557,7 @@ CONTAINS
 
       END DO
 
-      CALL mp_sum(forces, para_env%group)
+      CALL para_env%sum(forces)
 
       DEALLOCATE (hab, pab, cores)
 
@@ -707,7 +705,7 @@ CONTAINS
 
       INTEGER                                            :: handle, iatom, iatom_ref, natom
       REAL(KIND=dp), DIMENSION(:), POINTER               :: int_res
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(pw_env_type), POINTER                         :: pw_env
       TYPE(pw_poisson_type), POINTER                     :: poisson_env
       TYPE(pw_pool_type), POINTER                        :: auxbas_pw_pool
@@ -785,7 +783,7 @@ CONTAINS
       INTEGER                                            :: atom_a, handle, iatom, natom
       REAL(KIND=dp), ALLOCATABLE, DIMENSION(:)           :: zeta
       REAL(KIND=dp), ALLOCATABLE, DIMENSION(:, :)        :: ra
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
 
       CALL timeset(routineN, handle)
       NULLIFY (para_env)
@@ -824,7 +822,7 @@ CONTAINS
       REAL(KIND=dp), DIMENSION(:), INTENT(IN)            :: zeta, zetb
       REAL(KIND=dp), DIMENSION(:, :), INTENT(IN)         :: ra, rb
       REAL(KIND=dp), DIMENSION(:, :), INTENT(INOUT)      :: hab
-      TYPE(cp_para_env_type), INTENT(IN), POINTER        :: para_env
+      TYPE(mp_para_env_type), INTENT(IN), POINTER        :: para_env
 
       CHARACTER(len=*), PARAMETER                        :: routineN = 'integrate_s_mme'
 
@@ -853,7 +851,7 @@ CONTAINS
       END DO
 
       CALL cp_eri_mme_update_local_counts(param, para_env, G_count_2c=G_count, R_count_2c=R_count)
-      CALL mp_sum(hab, para_env%group)
+      CALL para_env%sum(hab)
       CALL timestop(handle)
 
    END SUBROUTINE integrate_s_mme
@@ -995,7 +993,7 @@ CONTAINS
       CHARACTER(LEN=default_path_length)                 :: filename
       INTEGER                                            :: handle, rst_unit
       TYPE(cp_logger_type), POINTER                      :: logger
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(section_vals_type), POINTER                   :: print_key, qmmm_section
 
       CALL timeset(routineN, handle)
@@ -1056,7 +1054,7 @@ CONTAINS
       INTEGER                                            :: handle, natom, output_unit, rst_unit
       LOGICAL                                            :: exist
       TYPE(cp_logger_type), POINTER                      :: logger
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(section_vals_type), POINTER                   :: qmmm_section
 
       CALL timeset(routineN, handle)
@@ -1083,7 +1081,7 @@ CONTAINS
       INQUIRE (FILE=image_filename, exist=exist)
 
       IF (exist) THEN
-         IF (para_env%ionode) THEN
+         IF (para_env%is_source()) THEN
             CALL open_file(file_name=image_filename, &
                            file_status="OLD", &
                            file_form="UNFORMATTED", &
@@ -1093,9 +1091,9 @@ CONTAINS
             READ (rst_unit) qs_env%image_matrix
          END IF
 
-         CALL mp_bcast(qs_env%image_matrix, para_env%source, para_env%group)
+         CALL para_env%bcast(qs_env%image_matrix)
 
-         IF (para_env%ionode) CALL close_file(unit_number=rst_unit)
+         IF (para_env%is_source()) CALL close_file(unit_number=rst_unit)
 
          output_unit = cp_print_key_unit_nr(logger, qmmm_section, &
                                             "QMMM%PRINT%PROGRAM_RUN_INFO", &

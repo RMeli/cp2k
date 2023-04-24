@@ -93,7 +93,6 @@ MODULE qs_core_hamiltonian
                                               cp_print_key_finished_output,&
                                               cp_print_key_should_output,&
                                               cp_print_key_unit_nr
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE dbcsr_api,                       ONLY: &
         dbcsr_add, dbcsr_copy, dbcsr_create, dbcsr_distribution_type, dbcsr_iterator_blocks_left, &
         dbcsr_iterator_next_block, dbcsr_iterator_start, dbcsr_iterator_stop, dbcsr_iterator_type, &
@@ -111,6 +110,7 @@ MODULE qs_core_hamiltonian
    USE kpoint_types,                    ONLY: get_kpoint_info,&
                                               kpoint_type
    USE lri_environment_types,           ONLY: lri_environment_type
+   USE message_passing,                 ONLY: mp_para_env_type
    USE particle_types,                  ONLY: particle_type
    USE qs_condnum,                      ONLY: overlap_condnum
    USE qs_environment_types,            ONLY: get_qs_env,&
@@ -345,8 +345,7 @@ CONTAINS
                   CALL get_kpoint_info(kpoint=kpoints, cell_to_index=cell_to_index)
                   ic = cell_to_index(0, 0, 0)
                END IF
-               CALL build_atomic_relmat(matrix_h(1, 1)%matrix, &
-                                        atomic_kind_set, qs_kind_set, particle_set)
+               CALL build_atomic_relmat(matrix_h(1, 1)%matrix, atomic_kind_set, qs_kind_set)
             ELSE
                CPABORT("Relativistic corrections of this type are currently not implemented")
             END IF
@@ -529,21 +528,16 @@ CONTAINS
 !> \param matrix_h ...
 !> \param atomic_kind_set ...
 !> \param qs_kind_set ...
-!> \param particle_set ...
 ! **************************************************************************************************
-   SUBROUTINE build_atomic_relmat(matrix_h, atomic_kind_set, qs_kind_set, particle_set)
+   SUBROUTINE build_atomic_relmat(matrix_h, atomic_kind_set, qs_kind_set)
       TYPE(dbcsr_type), POINTER                          :: matrix_h
       TYPE(atomic_kind_type), DIMENSION(:), POINTER      :: atomic_kind_set
       TYPE(qs_kind_type), DIMENSION(:), POINTER          :: qs_kind_set
-      TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
 
-      INTEGER                                            :: blk, iatom, ikind, jatom, natom
+      INTEGER                                            :: blk, iatom, ikind, jatom
       INTEGER, ALLOCATABLE, DIMENSION(:)                 :: kind_of
       REAL(KIND=dp), DIMENSION(:, :), POINTER            :: hblock, reltmat
       TYPE(dbcsr_iterator_type)                          :: iter
-
-      natom = SIZE(particle_set)
-      ALLOCATE (kind_of(natom))
 
       CALL get_atomic_kind_set(atomic_kind_set, kind_of=kind_of)
 
@@ -557,8 +551,6 @@ CONTAINS
          END IF
       END DO
       CALL dbcsr_iterator_stop(iter)
-
-      DEALLOCATE (kind_of)
 
    END SUBROUTINE build_atomic_relmat
 
@@ -577,9 +569,9 @@ CONTAINS
       INTEGER                                            :: after, handle, i, ic, iw, output_unit
       LOGICAL                                            :: omit_headers
       TYPE(cp_logger_type), POINTER                      :: logger
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: matrix_s, matrix_v
       TYPE(dbcsr_p_type), DIMENSION(:, :), POINTER       :: matrixkp_h, matrixkp_s, matrixkp_t
+      TYPE(mp_para_env_type), POINTER                    :: para_env
 
       CALL timeset(routineN, handle)
 

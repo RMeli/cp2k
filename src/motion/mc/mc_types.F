@@ -20,7 +20,6 @@ MODULE mc_types
    USE cp_files,                        ONLY: close_file,&
                                               open_file
    USE cp_log_handling,                 ONLY: cp_logger_get_default_io_unit
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE cp_subsys_types,                 ONLY: cp_subsys_get,&
                                               cp_subsys_type
    USE cp_units,                        ONLY: cp_unit_to_cp2k
@@ -44,7 +43,8 @@ MODULE mc_types
                                               default_string_length,&
                                               dp
    USE mathconstants,                   ONLY: pi
-   USE message_passing,                 ONLY: mp_comm_type
+   USE message_passing,                 ONLY: mp_comm_type,&
+                                              mp_para_env_type
    USE molecule_kind_list_types,        ONLY: molecule_kind_list_p_type
    USE molecule_kind_types,             ONLY: atom_type,&
                                               get_molecule_kind,&
@@ -578,8 +578,8 @@ CONTAINS
    END SUBROUTINE get_mc_molecule_info
 
 ! **************************************************************************************************
-!> \brief ...
-!> \param mc_par ...
+!> \brief changes the private elements of the mc_parameters_type
+!> \param mc_par the structure mc parameters you want
 !> \param rm ...
 !> \param cl ...
 !> \param diff ...
@@ -642,6 +642,8 @@ CONTAINS
 !> \param source ...
 !> \param group ...
 !> \param rand2skip ...
+!>    Suitable for parallel.
+!> \author MJM
 ! **************************************************************************************************
    SUBROUTINE set_mc_par(mc_par, rm, cl, &
                          diff, nstart, rmvolume, rmcltrans, rmbond, rmangle, rmdihedral, rmrot, rmtrans, PROGRAM, &
@@ -653,12 +655,6 @@ CONTAINS
                          mc_input_file, mc_bias_file, exp_max_val, exp_min_val, min_val, max_val, &
                          pmhmc, pmhmc_box, lhmc, ionode, source, group, rand2skip)
 
-! **************************************************************************************************
-!> \brief changes the private elements of the mc_parameters_type
-!> \param mc_par the structure mc parameters you want
-!>
-!>    Suitable for parallel.
-!> \author MJM
       TYPE(mc_simpar_type), POINTER                      :: mc_par
       INTEGER, INTENT(IN), OPTIONAL                      :: rm, cl, diff, nstart
       REAL(KIND=dp), INTENT(IN), OPTIONAL                :: rmvolume, rmcltrans
@@ -690,7 +686,8 @@ CONTAINS
                                                             max_val, pmhmc, pmhmc_box
       LOGICAL, INTENT(IN), OPTIONAL                      :: lhmc, ionode
       INTEGER, INTENT(IN), OPTIONAL                      :: source
-      TYPE(mp_comm_type), INTENT(IN), OPTIONAL           :: group
+
+      CLASS(mp_comm_type), INTENT(IN), OPTIONAL           :: group
       INTEGER, INTENT(IN), OPTIONAL                      :: rand2skip
 
       INTEGER                                            :: iparm
@@ -1197,7 +1194,7 @@ CONTAINS
    SUBROUTINE read_mc_section(mc_par, para_env, globenv, input_file_name, input_file, force_env_section)
 
       TYPE(mc_simpar_type), POINTER                      :: mc_par
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(global_environment_type), POINTER             :: globenv
       CHARACTER(LEN=*), INTENT(IN)                       :: input_file_name
       TYPE(section_vals_type), POINTER                   :: input_file, force_env_section
@@ -1230,8 +1227,8 @@ CONTAINS
       mc_par%input_file => input_file
 
 ! set the ionode and mepos
-      mc_par%ionode = para_env%ionode
-      mc_par%group = para_env%group
+      mc_par%ionode = para_env%is_source()
+      mc_par%group = para_env
       mc_par%source = para_env%source
 
 ! for convenience

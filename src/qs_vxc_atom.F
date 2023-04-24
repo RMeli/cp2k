@@ -15,7 +15,6 @@ MODULE qs_vxc_atom
    USE basis_set_types,                 ONLY: get_gto_basis_set,&
                                               gto_basis_set_type
    USE cp_control_types,                ONLY: dft_control_type
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE input_constants,                 ONLY: tddfpt_excitations,&
                                               tddfpt_triplet,&
                                               xc_none
@@ -24,7 +23,7 @@ MODULE qs_vxc_atom
                                               section_vals_val_get
    USE kinds,                           ONLY: dp
    USE memory_utilities,                ONLY: reallocate
-   USE message_passing,                 ONLY: mp_sum
+   USE message_passing,                 ONLY: mp_para_env_type
    USE orbital_pointers,                ONLY: indso,&
                                               nsoset
    USE paw_basis_types,                 ONLY: get_paw_basis_info
@@ -100,8 +99,8 @@ CONTAINS
       CHARACTER(LEN=*), PARAMETER :: routineN = 'calculate_vxc_atom'
 
       INTEGER                                            :: bo(2), handle, ia, iat, iatom, idir, &
-                                                            ikind, ir, ispin, mepos, myfun, na, &
-                                                            natom, nr, nspins, num_pe
+                                                            ikind, ir, ispin, myfun, na, natom, &
+                                                            nr, nspins, num_pe
       INTEGER, DIMENSION(2, 3)                           :: bounds
       INTEGER, DIMENSION(:), POINTER                     :: atom_list
       LOGICAL                                            :: donlcc, epr_xc, gradient_f, lsd, nlcc, &
@@ -115,11 +114,11 @@ CONTAINS
                                                             vtau_s, vxc_h, vxc_s
       REAL(dp), DIMENSION(:, :, :, :), POINTER           :: drho_h, drho_s, vxg_h, vxg_s
       TYPE(atomic_kind_type), DIMENSION(:), POINTER      :: atomic_kind_set
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dft_control_type), POINTER                    :: dft_control
       TYPE(grid_atom_type), POINTER                      :: grid_atom
       TYPE(gto_basis_set_type), POINTER                  :: basis_1c
       TYPE(harmonics_atom_type), POINTER                 :: harmonics
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(qs_kind_type), DIMENSION(:), POINTER          :: my_kind_set
       TYPE(rho_atom_coeff), DIMENSION(:), POINTER        :: dr_h, dr_s, int_hh, int_ss, r_h, r_s
       TYPE(rho_atom_coeff), DIMENSION(:, :), POINTER     :: r_h_d, r_s_d
@@ -279,8 +278,7 @@ CONTAINS
             ! Distribute the atoms of this kind
 
             num_pe = para_env%num_pe
-            mepos = para_env%mepos
-            bo = get_limit(natom, num_pe, mepos)
+            bo = get_limit(natom, para_env%num_pe, para_env%mepos)
 
             DO iat = bo(1), bo(2)
                iatom = atom_list(iat)
@@ -401,7 +399,7 @@ CONTAINS
 
          END DO ! ikind
 
-         CALL mp_sum(exc1, para_env%group)
+         CALL para_env%sum(exc1)
 
          IF (ASSOCIATED(rho_h)) THEN
             DEALLOCATE (rho_h)
@@ -471,7 +469,7 @@ CONTAINS
       TYPE(rho_atom_type), DIMENSION(:), POINTER         :: rho_atom_set, rho1_atom_set
       TYPE(qs_environment_type), POINTER                 :: qs_env
       TYPE(section_vals_type), POINTER                   :: xc_section
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), INTENT(IN)                 :: para_env
       LOGICAL, INTENT(IN), OPTIONAL                      :: do_tddft, do_tddfpt2, do_triplet
       TYPE(qs_kind_type), DIMENSION(:), OPTIONAL, &
          POINTER                                         :: kind_set_external
@@ -775,8 +773,8 @@ CONTAINS
       REAL(KIND=dp), PARAMETER                           :: epsrho = 5.e-4_dp
 
       INTEGER                                            :: bo(2), handle, iat, iatom, ikind, ir, &
-                                                            istep, mepos, myfun, na, natom, nr, &
-                                                            ns, nspins, nstep, num_pe
+                                                            istep, myfun, na, natom, nf, nr, ns, &
+                                                            nspins, nstep, num_pe
       INTEGER, DIMENSION(2, 3)                           :: bounds
       INTEGER, DIMENSION(:), POINTER                     :: atom_list
       LOGICAL                                            :: donlcc, gradient_f, lsd, nlcc, paw_atom, &
@@ -794,11 +792,11 @@ CONTAINS
                                                             drho_h, drho_s, vxg_h, vxg_s
       REAL(KIND=dp), DIMENSION(-4:4)                     :: ak, bl
       TYPE(atomic_kind_type), DIMENSION(:), POINTER      :: atomic_kind_set
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dft_control_type), POINTER                    :: dft_control
       TYPE(grid_atom_type), POINTER                      :: grid_atom
       TYPE(gto_basis_set_type), POINTER                  :: basis_1c
       TYPE(harmonics_atom_type), POINTER                 :: harmonics
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(rho_atom_coeff), DIMENSION(:), POINTER        :: dr_h, dr_s, fint_hh, fint_ss, int_hh, &
                                                             int_ss, r_h, r_s
       TYPE(rho_atom_coeff), DIMENSION(:, :), POINTER     :: r_h_d, r_s_d
@@ -898,8 +896,8 @@ CONTAINS
             ALLOCATE (vxc_h(na, nr, nspins), vxc_s(na, nr, nspins))
             IF (gradient_f) THEN
                ALLOCATE (drho_h(4, na, nr, nspins), drho_s(4, na, nr, nspins), &
-                         drho0_h(3, na, nr, nspins), drho0_s(3, na, nr, nspins), &
-                         drho1_h(3, na, nr, nspins), drho1_s(3, na, nr, nspins))
+                         drho0_h(4, na, nr, nspins), drho0_s(4, na, nr, nspins), &
+                         drho1_h(4, na, nr, nspins), drho1_s(4, na, nr, nspins))
                ALLOCATE (vxg_h(3, na, nr, nspins), vxg_s(3, na, nr, nspins))
             END IF
             IF (tau_f) THEN
@@ -908,12 +906,6 @@ CONTAINS
                          tau1_h(na, nr, nspins), tau1_s(na, nr, nspins))
                ALLOCATE (vtau_h(na, nr, nspins), vtau_s(na, nr, nspins))
             END IF
-            !
-            ALLOCATE (fint_ss(nspins), fint_hh(nspins))
-            DO ns = 1, nspins
-               ALLOCATE (fint_ss(ns)%r_coef(na, nr))
-               ALLOCATE (fint_hh(ns)%r_coef(na, nr))
-            END DO
             !
             ! NLCC: prepare rho and drho of the core charge for this KIND
             donlcc = .FALSE.
@@ -925,11 +917,21 @@ CONTAINS
 
             ! Distribute the atoms of this kind
             num_pe = para_env%num_pe
-            mepos = para_env%mepos
-            bo = get_limit(natom, num_pe, mepos)
+            bo = get_limit(natom, num_pe, para_env%mepos)
 
             DO iat = bo(1), bo(2)
                iatom = atom_list(iat)
+               !
+               NULLIFY (int_hh, int_ss)
+               rho0_atom => rho0_atom_set(iatom)
+               CALL get_rho_atom(rho_atom=rho0_atom, ga_Vlocal_gb_h=int_hh, ga_Vlocal_gb_s=int_ss)
+               ALLOCATE (fint_ss(nspins), fint_hh(nspins))
+               DO ns = 1, nspins
+                  nf = SIZE(int_ss(ns)%r_coef, 1)
+                  ALLOCATE (fint_ss(ns)%r_coef(nf, nf))
+                  nf = SIZE(int_hh(ns)%r_coef, 1)
+                  ALLOCATE (fint_hh(ns)%r_coef(nf, nf))
+               END DO
 
                ! RHO0
                rho0_h = 0.0_dp
@@ -1054,6 +1056,12 @@ CONTAINS
                      int_hh(ns)%r_coef(:, :) = int_hh(ns)%r_coef(:, :) + oeps2*bl(istep)*fint_hh(ns)%r_coef(:, :)
                   END DO
                END DO
+               !
+               DO ns = 1, nspins
+                  DEALLOCATE (fint_ss(ns)%r_coef)
+                  DEALLOCATE (fint_hh(ns)%r_coef)
+               END DO
+               DEALLOCATE (fint_ss, fint_hh)
 
             END DO ! iat
 
@@ -1072,11 +1080,6 @@ CONTAINS
                DEALLOCATE (tau_h, tau_s, tau0_h, tau0_s, tau1_h, tau1_s)
                DEALLOCATE (vtau_h, vtau_s)
             END IF
-            DO ns = 1, nspins
-               DEALLOCATE (fint_ss(ns)%r_coef)
-               DEALLOCATE (fint_hh(ns)%r_coef)
-            END DO
-            DEALLOCATE (fint_ss, fint_hh)
 
          END DO ! ikind
 

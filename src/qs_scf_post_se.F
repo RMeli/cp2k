@@ -30,7 +30,6 @@ MODULE qs_scf_post_se
                                               cp_print_key_finished_output,&
                                               cp_print_key_should_output,&
                                               cp_print_key_unit_nr
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE cp_result_methods,               ONLY: cp_results_erase,&
                                               put_results
    USE cp_result_types,                 ONLY: cp_result_type
@@ -44,7 +43,7 @@ MODULE qs_scf_post_se
    USE kinds,                           ONLY: default_string_length,&
                                               dp
    USE mathconstants,                   ONLY: twopi
-   USE message_passing,                 ONLY: mp_sum
+   USE message_passing,                 ONLY: mp_para_env_type
    USE moments_utils,                   ONLY: get_reference_point
    USE orbital_pointers,                ONLY: coset,&
                                               ncoset
@@ -99,7 +98,7 @@ CONTAINS
       INTEGER                                            :: handle, output_unit
       LOGICAL                                            :: explicit, my_localized_wfn
       TYPE(cp_logger_type), POINTER                      :: logger
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(particle_list_type), POINTER                  :: particles
       TYPE(qs_rho_type), POINTER                         :: rho
       TYPE(qs_subsys_type), POINTER                      :: subsys
@@ -459,7 +458,7 @@ CONTAINS
       TYPE(cp_logger_type), POINTER                      :: logger
       TYPE(qs_environment_type), POINTER                 :: qs_env
       TYPE(qs_rho_type), POINTER                         :: rho
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
 
       CHARACTER(LEN=2)                                   :: aname
       INTEGER                                            :: i, iat, iatom, ikind, j, nat, natom, &
@@ -516,8 +515,8 @@ CONTAINS
             END DO
          END DO
          !
-         CALL mp_sum(charges, para_env%group)
-         CALL mp_sum(mcharge, para_env%group)
+         CALL para_env%sum(charges)
+         CALL para_env%sum(mcharge)
          !
          IF (unit_nr > 0) THEN
             WRITE (UNIT=unit_nr, FMT="(/,/,T2,A)") "POPULATION ANALYSIS"
@@ -593,9 +592,9 @@ CONTAINS
       INTEGER                                            :: after, handle, ispin, iw, output_unit
       LOGICAL                                            :: omit_headers
       TYPE(cp_logger_type), POINTER                      :: logger
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: ks_rmpv, rho_ao
       TYPE(dft_control_type), POINTER                    :: dft_control
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(particle_list_type), POINTER                  :: particles
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
       TYPE(qs_rho_type), POINTER                         :: rho

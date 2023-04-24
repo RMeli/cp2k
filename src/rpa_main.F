@@ -23,8 +23,7 @@ MODULE rpa_main
    USE cp_blacs_env,                    ONLY: cp_blacs_env_create,&
                                               cp_blacs_env_release,&
                                               cp_blacs_env_type
-   USE cp_cfm_types,                    ONLY: cp_cfm_p_type,&
-                                              cp_cfm_type
+   USE cp_cfm_types,                    ONLY: cp_cfm_type
    USE cp_fm_basic_linalg,              ONLY: cp_fm_scale_and_add
    USE cp_fm_struct,                    ONLY: cp_fm_struct_create,&
                                               cp_fm_struct_release,&
@@ -34,9 +33,6 @@ MODULE rpa_main
                                               cp_fm_set_all,&
                                               cp_fm_to_fm,&
                                               cp_fm_type
-   USE cp_para_env,                     ONLY: cp_para_env_release,&
-                                              cp_para_env_split
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE dbcsr_api,                       ONLY: dbcsr_add,&
                                               dbcsr_clear,&
                                               dbcsr_get_info,&
@@ -62,10 +58,9 @@ MODULE rpa_main
                                               m_memory
    USE mathconstants,                   ONLY: pi,&
                                               z_zero
-   USE message_passing,                 ONLY: mp_min,&
-                                              mp_sendrecv,&
-                                              mp_sum,&
-                                              mp_sync
+   USE message_passing,                 ONLY: mp_comm_type,&
+                                              mp_para_env_release,&
+                                              mp_para_env_type
    USE minimax_exp,                     ONLY: check_exp_minimax_range
    USE mp2_grids,                       ONLY: get_clenshaw_grid,&
                                               get_minimax_grid
@@ -192,7 +187,7 @@ CONTAINS
          INTENT(INOUT)                                   :: BIb_C, BIb_C_gw
       REAL(KIND=dp), ALLOCATABLE, DIMENSION(:, :, :), &
          INTENT(INOUT)                                   :: BIb_C_bse_ij, BIb_C_bse_ab
-      TYPE(cp_para_env_type), POINTER                    :: para_env, para_env_sub
+      TYPE(mp_para_env_type), POINTER                    :: para_env, para_env_sub
       INTEGER, INTENT(INOUT)                             :: color_sub
       TYPE(group_dist_d1_type), INTENT(INOUT)            :: gd_array
       TYPE(group_dist_d1_type), DIMENSION(:), &
@@ -249,7 +244,7 @@ CONTAINS
                                                             fm_mat_S_gw
       TYPE(cp_fm_type), DIMENSION(1)                     :: fm_mat_R_gw, fm_mat_S_ab_bse, &
                                                             fm_mat_S_ij_bse
-      TYPE(cp_para_env_type), POINTER                    :: para_env_RPA
+      TYPE(mp_para_env_type), POINTER                    :: para_env_RPA
       TYPE(two_dim_real_array), ALLOCATABLE, &
          DIMENSION(:)                                    :: BIb_C_2D, BIb_C_2D_gw
       TYPE(two_dim_real_array), DIMENSION(1)             :: BIb_C_2D_bse_ab, BIb_C_2D_bse_ij
@@ -362,7 +357,7 @@ CONTAINS
 
          CALL m_memory(mem)
          mem_real = (mem + 1024*1024 - 1)/(1024*1024)
-         CALL mp_min(mem_real, para_env%group)
+         CALL para_env%min(mem_real)
 
          mem_per_rank = 0.0_dp
 
@@ -546,8 +541,8 @@ CONTAINS
       CALL timestop(handle2)
 
       IF (num_integ_group > 1) THEN
-         NULLIFY (para_env_RPA)
-         CALL cp_para_env_split(para_env_RPA, para_env, color_rpa_group)
+         ALLOCATE (para_env_RPA)
+         CALL para_env_RPA%from_split(para_env, color_rpa_group)
       ELSE
          para_env_RPA => para_env
       END IF
@@ -635,25 +630,16 @@ CONTAINS
 
       CALL release_group_dist(gd_array)
 
-      IF (num_integ_group > 1) CALL cp_para_env_release(para_env_RPA)
+      IF (num_integ_group > 1) CALL mp_para_env_release(para_env_RPA)
 
       IF (.NOT. do_im_time) THEN
-         DO ispin = 1, SIZE(fm_mat_Q_gemm)
-            CALL cp_fm_release(fm_mat_Q_gemm(ispin))
-            CALL cp_fm_release(fm_mat_S(ispin))
-         END DO
-         DEALLOCATE (fm_mat_Q_gemm, fm_mat_S)
+         CALL cp_fm_release(fm_mat_Q_gemm)
+         CALL cp_fm_release(fm_mat_S)
       END IF
-      DO ispin = 1, SIZE(fm_mat_Q)
-         CALL cp_fm_release(fm_mat_Q(ispin))
-      END DO
-      DEALLOCATE (fm_mat_Q)
+      CALL cp_fm_release(fm_mat_Q)
 
       IF (my_do_gw .AND. .NOT. do_im_time) THEN
-         DO ispin = 1, SIZE(fm_mat_S_gw)
-            CALL cp_fm_release(fm_mat_S_gw(ispin))
-         END DO
-         DEALLOCATE (fm_mat_S_gw)
+         CALL cp_fm_release(fm_mat_S_gw)
          CALL cp_fm_release(fm_mat_R_gw(1))
       END IF
 
@@ -698,7 +684,7 @@ CONTAINS
          INTENT(OUT)                                     :: BIb_C_2D
       REAL(KIND=dp), ALLOCATABLE, DIMENSION(:, :, :), &
          INTENT(IN)                                      :: BIb_C
-      TYPE(cp_para_env_type), INTENT(IN)                 :: para_env_sub
+      TYPE(mp_para_env_type), INTENT(IN)                 :: para_env_sub
       INTEGER, INTENT(IN)                                :: dimen_ia, homo, virtual
       TYPE(group_dist_d1_type), INTENT(INOUT)            :: gd_B_virtual
       INTEGER                                            :: my_ia_size, my_ia_start, my_ia_end, &
@@ -746,9 +732,8 @@ CONTAINS
                occ_high = MIN(homo, occ_low + occ_chunk - 1)
                BIb_C_rec(1:my_group_L_size, 1:rec_B_size, 1:occ_high - occ_low + 1) => &
                   BIb_C_rec_1D(1:INT(my_group_L_size, int_8)*rec_B_size*(occ_high - occ_low + 1))
-               CALL mp_sendrecv(BIb_C(:, :, occ_low:occ_high), proc_send, &
-                                BIb_C_rec(:, :, 1:occ_high - occ_low + 1), proc_receive, &
-                                para_env_sub%group)
+               CALL para_env_sub%sendrecv(BIb_C(:, :, occ_low:occ_high), proc_send, &
+                                          BIb_C_rec(:, :, 1:occ_high - occ_low + 1), proc_receive)
 !$OMP          PARALLEL DO DEFAULT(NONE) PRIVATE(jjB,ia_global) &
 !$OMP                   SHARED(occ_low,occ_high,rec_B_size,virtual,rec_B_virtual_start,my_ia_start,my_ia_end,BIb_C_rec,BIb_C_2D,&
 !$OMP                          my_group_L_size)
@@ -811,7 +796,7 @@ CONTAINS
 
       TYPE(two_dim_real_array), DIMENSION(:), &
          INTENT(INOUT)                                   :: BIb_C_2D
-      TYPE(cp_para_env_type), INTENT(IN)                 :: para_env, para_env_sub
+      TYPE(mp_para_env_type), INTENT(IN)                 :: para_env, para_env_sub
       INTEGER, INTENT(IN)                                :: color_sub, ngroup, integ_group_size, &
                                                             dimen_RI
       INTEGER, DIMENSION(:), INTENT(IN)                  :: dimen_ia
@@ -820,7 +805,7 @@ CONTAINS
       INTEGER, DIMENSION(:), INTENT(IN)                  :: my_ia_size, my_ia_start, my_ia_end
       INTEGER, INTENT(IN)                                :: my_group_L_size, my_group_L_start, &
                                                             my_group_L_end
-      TYPE(cp_para_env_type), INTENT(IN), POINTER        :: para_env_RPA
+      TYPE(mp_para_env_type), INTENT(IN), POINTER        :: para_env_RPA
       TYPE(cp_fm_type), DIMENSION(:), INTENT(INOUT)      :: fm_mat_S
       INTEGER, INTENT(INOUT)                             :: nrow_block_mat, ncol_block_mat
       TYPE(cp_blacs_env_type), OPTIONAL, POINTER         :: blacs_env_ext, blacs_env_ext_S
@@ -834,13 +819,12 @@ CONTAINS
 
       INTEGER                                            :: col_row_proc_ratio, grid_2D(2), handle, &
                                                             iproc, iproc_col, iproc_row, ispin, &
-                                                            mepos_in_RPA_group, sub_sub_color
+                                                            mepos_in_RPA_group
       INTEGER, ALLOCATABLE, DIMENSION(:, :)              :: group_grid_2_mepos
       LOGICAL                                            :: my_blacs_ext, my_blacs_S_ext, &
                                                             my_do_im_time
       TYPE(cp_blacs_env_type), POINTER                   :: blacs_env, blacs_env_Q
       TYPE(cp_fm_struct_type), POINTER                   :: fm_struct
-      TYPE(cp_para_env_type), POINTER                    :: para_env_exchange
       TYPE(group_dist_d1_type)                           :: gd_ia, gd_L
 
       CALL timeset(routineN, handle)
@@ -929,7 +913,7 @@ CONTAINS
             ALLOCATE (group_grid_2_mepos(0:integ_group_size - 1, 0:para_env_sub%num_pe - 1))
             group_grid_2_mepos = 0
             group_grid_2_mepos(mepos_in_RPA_group, para_env_sub%mepos) = para_env_RPA%mepos
-            CALL mp_sum(group_grid_2_mepos, para_env_RPA%group)
+            CALL para_env_RPA%sum(group_grid_2_mepos)
 
             CALL array2fm(BIb_C_2D(ispin)%array, fm_struct, my_group_L_start, my_group_L_end, &
                           my_ia_start(ispin), my_ia_end(ispin), gd_L, gd_ia, &
@@ -943,13 +927,14 @@ CONTAINS
             CALL release_group_dist(gd_L)
             CALL release_group_dist(gd_ia)
 
-            ! mp_sum the local data across processes belonging to different RPA group.
-            ! first create the para_env then mp_sum
+            ! sum the local data across processes belonging to different RPA group.
             IF (para_env_RPA%num_pe /= para_env%num_pe) THEN
-               sub_sub_color = para_env_RPA%mepos
-               CALL cp_para_env_split(para_env_exchange, para_env, sub_sub_color)
-               CALL mp_sum(fm_mat_S(ispin)%local_data, para_env_exchange%group)
-               CALL cp_para_env_release(para_env_exchange)
+               BLOCK
+                  TYPE(mp_comm_type) :: comm_exchange
+                  comm_exchange = fm_mat_S(ispin)%matrix_struct%context%interconnect(para_env)
+                  CALL comm_exchange%sum(fm_mat_S(ispin)%local_data)
+                  CALL comm_exchange%free()
+               END BLOCK
             END IF
          END DO
       END IF
@@ -1070,7 +1055,7 @@ CONTAINS
       TYPE(qs_environment_type), POINTER                 :: qs_env
       REAL(KIND=dp), INTENT(OUT)                         :: Erpa
       TYPE(mp2_type)                                     :: mp2_env
-      TYPE(cp_para_env_type), POINTER                    :: para_env, para_env_RPA, para_env_sub
+      TYPE(mp_para_env_type), POINTER                    :: para_env, para_env_RPA, para_env_sub
       INTEGER, INTENT(IN)                                :: unit_nr
       INTEGER, DIMENSION(:), INTENT(IN)                  :: homo, virtual
       INTEGER, INTENT(IN)                                :: dimen_RI, dimen_RI_red
@@ -1140,7 +1125,6 @@ CONTAINS
                                                             weights_sin_tf_t_to_w
       REAL(KIND=dp), ALLOCATABLE, DIMENSION(:, :, :) :: B_abQ_bse_local, B_bar_iaQ_bse_local, &
          B_bar_ijQ_bse_local, B_iaQ_bse_local, Eigenval_last, Eigenval_scf, vec_Sigma_x_gw
-      TYPE(cp_cfm_p_type), ALLOCATABLE, DIMENSION(:, :)  :: cfm_mat_W_kp_tau
       TYPE(cp_cfm_type)                                  :: cfm_mat_Q
       TYPE(cp_fm_type) :: fm_mat_Q_static_bse, fm_mat_Q_static_bse_gemm, fm_mat_RI_global_work, &
          fm_mat_work, fm_mo_coeff_occ_scaled, fm_mo_coeff_virt_scaled, fm_scaled_dm_occ_tau, &
@@ -1533,7 +1517,7 @@ CONTAINS
                   CALL invert_eps_compute_W_and_Erpa_kp(dimen_RI, num_integ_points, jquad, nkp, count_ev_sc_GW, para_env, &
                                                         Erpa, tau_tj, tj, wj, weights_cos_tf_w_to_t, &
                                                         wkp_W, do_gw_im_time, do_ri_Sigma_x, do_kpoints_from_Gamma, &
-                                                        do_kpoints_cubic_RPA, cfm_mat_W_kp_tau, cfm_mat_Q, ikp_local, &
+                                                        cfm_mat_Q, ikp_local, &
                                                         mat_P_omega(:, :, 1), mat_P_omega_kp, qs_env, eps_filter_im_time, unit_nr, &
                                                         kpoints, fm_mat_Minv_L_kpoints, fm_mat_L_kpoints, &
                                                         fm_mat_W, fm_mat_RI_global_work, mat_MinvVMinv, &
@@ -1578,11 +1562,11 @@ CONTAINS
             END IF
 
             IF (unit_nr > 0) CALL m_flush(unit_nr)
-            CALL mp_sync(para_env%group) ! sync to see output
+            CALL para_env%sync() ! sync to see output
 
          END DO ! jquad
 
-         CALL mp_sum(Erpa, para_env%group)
+         CALL para_env%sum(Erpa)
 
          IF (.NOT. do_ri_sos_laplace_mp2) THEN
             Erpa = Erpa/(pi*2.0_dp)
@@ -1590,7 +1574,7 @@ CONTAINS
          END IF
 
          IF (mp2_env%ri_rpa%do_ri_axk) THEN
-            CALL mp_sum(E_axk, para_env%group)
+            CALL para_env%sum(E_axk)
             E_axk = E_axk/(pi*2.0_dp)
             IF (do_minimax_quad) E_axk = E_axk/2.0_dp
             mp2_env%ri_rpa%ener_axk = E_axk
@@ -1765,7 +1749,7 @@ CONTAINS
                                                 t_3c_overl_int_ao_mo, t_3c_O_mo_compressed, t_3c_O_mo_ind, &
                                                 t_3c_overl_int_gw_RI, t_3c_overl_int_gw_AO, &
                                                 t_3c_overl_nnP_ic, t_3c_overl_nnP_ic_reflected, &
-                                                mat_W, cfm_mat_W_kp_tau, qs_env)
+                                                mat_W, qs_env)
          END IF
 
       END IF

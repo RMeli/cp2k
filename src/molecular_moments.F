@@ -28,7 +28,6 @@ MODULE molecular_moments
                                               cp_logger_type
    USE cp_output_handling,              ONLY: cp_print_key_finished_output,&
                                               cp_print_key_unit_nr
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE dbcsr_api,                       ONLY: dbcsr_copy,&
                                               dbcsr_deallocate_matrix,&
                                               dbcsr_p_type,&
@@ -38,9 +37,7 @@ MODULE molecular_moments
    USE input_section_types,             ONLY: section_vals_type,&
                                               section_vals_val_get
    USE kinds,                           ONLY: dp
-   USE message_passing,                 ONLY: mp_bcast,&
-                                              mp_maxloc,&
-                                              mp_sum
+   USE message_passing,                 ONLY: mp_para_env_type
    USE molecule_kind_types,             ONLY: get_molecule_kind,&
                                               molecule_kind_type
    USE molecule_types,                  ONLY: molecule_type
@@ -100,11 +97,11 @@ CONTAINS
       TYPE(cp_fm_struct_type), POINTER                   :: fm_struct
       TYPE(cp_fm_type)                                   :: momv, mvector, omvector
       TYPE(cp_logger_type), POINTER                      :: logger
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: matrix_s, moments
       TYPE(dft_control_type), POINTER                    :: dft_control
       TYPE(distribution_1d_type), POINTER                :: local_molecules
       TYPE(molecule_kind_type), POINTER                  :: molecule_kind
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(particle_type), POINTER                       :: particle_set(:)
       TYPE(qs_kind_type), DIMENSION(:), POINTER          :: qs_kind_set
 
@@ -154,7 +151,7 @@ CONTAINS
                   nstates(1) = 0
                END IF
                nstates(2) = para_env%mepos
-               CALL mp_maxloc(nstates, para_env%group)
+               CALL para_env%maxloc(nstates)
                IF (nstates(1) == 0) CYCLE
                ns = nstates(1)
                iproc = nstates(2)
@@ -164,7 +161,7 @@ CONTAINS
                ELSE
                   states(:) = 0
                END IF
-               CALL mp_bcast(states, iproc, para_env%group)
+               CALL para_env%bcast(states, iproc)
                ! assemble local states for this molecule
                ASSOCIATE (mo_localized => mo_local(ispin))
                   CALL cp_fm_get_info(mo_localized, ncol_global=ncol_global, nrow_global=nrow_global)
@@ -253,8 +250,8 @@ CONTAINS
             END IF
          END DO
       END DO
-      CALL mp_sum(moment_set, para_env%group)
-      CALL mp_sum(charge_set, para_env%group)
+      CALL para_env%sum(moment_set)
+      CALL para_env%sum(charge_set)
 
       iounit = cp_print_key_unit_nr(logger, loc_print_key, "MOLECULAR_MOMENTS", &
                                     extension=".MolMom", middle_name="MOLECULAR_MOMENTS")

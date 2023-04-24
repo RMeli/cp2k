@@ -14,7 +14,8 @@ MODULE pw_grid_types
 
    USE kinds,                           ONLY: dp,&
                                               int_8
-   USE message_passing,                 ONLY: mp_comm_type
+   USE message_passing,                 ONLY: mp_cart_type,&
+                                              mp_comm_type
 #include "../base/base_uses.f90"
 
    IMPLICIT NONE
@@ -47,7 +48,7 @@ MODULE pw_grid_types
       INTEGER, DIMENSION(:, :, :), POINTER :: yzp ! g-space rays (xy,k,pe)
       INTEGER, DIMENSION(:, :), POINTER :: yzq ! local inverse pointer of yzp
       INTEGER, DIMENSION(:), POINTER :: nyzray ! number of g-space rays (pe)
-      TYPE(mp_comm_type) :: rs_group ! real space group (2-dim cart)
+      TYPE(mp_cart_type) :: rs_group ! real space group (2-dim cart)
       INTEGER :: rs_mpo ! real space group position
       INTEGER, DIMENSION(2) :: rs_dims ! real space group dimensions
       INTEGER, DIMENSION(2) :: rs_pos ! real space group positions in grid
@@ -86,7 +87,7 @@ MODULE pw_grid_types
       INTEGER, DIMENSION(:), POINTER :: gidx ! ref grid index
       INTEGER :: ref_count ! reference count
       LOGICAL :: spherical ! spherical cutoff?
-      COMPLEX(KIND=dp), DIMENSION(:, :), POINTER :: grays ! used by parallel 3D FFT routine
+      COMPLEX(KIND=dp), DIMENSION(:, :), CONTIGUOUS, POINTER :: grays ! used by parallel 3D FFT routine
    END TYPE pw_grid_type
 
 END MODULE pw_grid_types

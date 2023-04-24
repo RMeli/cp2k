@@ -18,7 +18,6 @@ MODULE xtb_ehess
                                               pbc
    USE cp_control_types,                ONLY: dft_control_type,&
                                               xtb_control_type
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE dbcsr_api,                       ONLY: dbcsr_get_block_p,&
                                               dbcsr_iterator_blocks_left,&
                                               dbcsr_iterator_next_block,&
@@ -35,7 +34,7 @@ MODULE xtb_ehess
    USE kinds,                           ONLY: dp
    USE mathconstants,                   ONLY: oorootpi,&
                                               pi
-   USE message_passing,                 ONLY: mp_sum
+   USE message_passing,                 ONLY: mp_para_env_type
    USE particle_types,                  ONLY: particle_type
    USE pw_poisson_types,                ONLY: do_ewald_ewald,&
                                               do_ewald_none,&
@@ -86,9 +85,9 @@ CONTAINS
 
       INTEGER :: blk, ewald_type, handle, i, ia, iatom, icol, ikind, irow, is, j, jatom, jkind, &
          la, lb, lmaxa, lmaxb, natom, natorb_a, natorb_b, ni, nj, nkind, nmat, za, zb
+      INTEGER, ALLOCATABLE, DIMENSION(:)                 :: kind_of
       INTEGER, DIMENSION(25)                             :: laoa, laob
       INTEGER, DIMENSION(3)                              :: cellind, periodic
-      INTEGER, DIMENSION(:), POINTER                     :: kind_of
       LOGICAL                                            :: defined, do_ewald, found
       REAL(KIND=dp)                                      :: alpha, deth, dr, etaa, etab, gmij, kg, &
                                                             rcut, rcuta, rcutb
@@ -101,13 +100,13 @@ CONTAINS
       TYPE(atomic_kind_type), DIMENSION(:), POINTER      :: atomic_kind_set
       TYPE(atprop_type), POINTER                         :: atprop
       TYPE(cell_type), POINTER                           :: cell
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_iterator_type)                          :: iter
       TYPE(dbcsr_p_type), DIMENSION(:, :), POINTER       :: matrix_s
       TYPE(dft_control_type), POINTER                    :: dft_control
       TYPE(distribution_1d_type), POINTER                :: local_particles
       TYPE(ewald_environment_type), POINTER              :: ewald_env
       TYPE(ewald_pw_type), POINTER                       :: ewald_pw
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(neighbor_list_iterator_p_type), &
          DIMENSION(:), POINTER                           :: nl_iterator
       TYPE(neighbor_list_set_p_type), DIMENSION(:), &
@@ -227,8 +226,8 @@ CONTAINS
 
       ! global sum of gamma*p arrays
       CALL get_qs_env(qs_env=qs_env, para_env=para_env)
-      CALL mp_sum(gmcharge(:, 1), para_env%group)
-      CALL mp_sum(gchrg(:, :, 1), para_env%group)
+      CALL para_env%sum(gmcharge(:, 1))
+      CALL para_env%sum(gchrg(:, :, 1))
 
       IF (xtb_control%coulomb_lr) THEN
          IF (do_ewald) THEN
@@ -240,7 +239,6 @@ CONTAINS
          END IF
       END IF
 
-      ALLOCATE (kind_of(natom))
       CALL get_qs_env(qs_env=qs_env, atomic_kind_set=atomic_kind_set)
       CALL get_atomic_kind_set(atomic_kind_set=atomic_kind_set, kind_of=kind_of)
 
@@ -296,7 +294,7 @@ CONTAINS
          CPABORT("QMMM not available in xTB response calculations")
       END IF
 
-      DEALLOCATE (gmcharge, gchrg, kind_of)
+      DEALLOCATE (gmcharge, gchrg)
 
       CALL timestop(handle)
 
@@ -318,9 +316,8 @@ CONTAINS
 
       CHARACTER(len=*), PARAMETER :: routineN = 'dftb3_diagonal_hessian'
 
-      INTEGER                                            :: blk, handle, icol, ikind, irow, is, &
-                                                            jkind, natom
-      INTEGER, DIMENSION(:), POINTER                     :: kind_of
+      INTEGER                                            :: blk, handle, icol, ikind, irow, is, jkind
+      INTEGER, ALLOCATABLE, DIMENSION(:)                 :: kind_of
       LOGICAL                                            :: found
       REAL(KIND=dp)                                      :: gmij, ui, uj
       REAL(KIND=dp), DIMENSION(:, :), POINTER            :: ksblock, sblock
@@ -331,8 +328,7 @@ CONTAINS
 
       CALL timeset(routineN, handle)
 
-      CALL get_qs_env(qs_env=qs_env, matrix_s_kp=matrix_s, natom=natom)
-      ALLOCATE (kind_of(natom))
+      CALL get_qs_env(qs_env=qs_env, matrix_s_kp=matrix_s)
       CALL get_qs_env(qs_env=qs_env, atomic_kind_set=atomic_kind_set, qs_kind_set=qs_kind_set)
       CALL get_atomic_kind_set(atomic_kind_set=atomic_kind_set, kind_of=kind_of)
       ! no k-points; all matrices have been transformed to periodic bsf
@@ -353,7 +349,6 @@ CONTAINS
          END DO
       END DO
       CALL dbcsr_iterator_stop(iter)
-      DEALLOCATE (kind_of)
 
       CALL timestop(handle)
 

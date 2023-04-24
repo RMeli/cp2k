@@ -399,13 +399,20 @@ CONTAINS
       ! Read the finite field input section
       dft_control%apply_efield = .FALSE.
       dft_control%apply_efield_field = .FALSE. !this is for RTP
+      dft_control%apply_vector_potential = .FALSE. !this is for RTP
       tmp_section => section_vals_get_subs_vals(dft_section, "EFIELD")
       CALL section_vals_get(tmp_section, n_repetition=nrep, explicit=is_present)
       IF (is_present) THEN
          ALLOCATE (dft_control%efield_fields(nrep))
          CALL read_efield_sections(dft_control, tmp_section)
          IF (do_rtp) THEN
-            dft_control%apply_efield_field = .TRUE.
+            IF (.NOT. dft_control%rtp_control%velocity_gauge) THEN
+               dft_control%apply_efield_field = .TRUE.
+            ELSE
+               dft_control%apply_vector_potential = .TRUE.
+               ! Use this input value of vector potential to (re)start RTP
+               dft_control%rtp_control%vec_pot = dft_control%efield_fields(1)%efield%vec_pot_initial
+            END IF
          ELSE
             dft_control%apply_efield = .TRUE.
             CPASSERT(nrep == 1)
@@ -1454,21 +1461,21 @@ CONTAINS
          CASE DEFAULT
             CPABORT("Illegal value for periodiciy")
          END SELECT
-      END IF
-      CALL section_vals_get(stda_section, explicit=explicit)
-      IF (explicit) THEN
-         CALL section_vals_val_get(stda_section, "HFX_FRACTION", r_val=hfx, explicit=expl)
-         IF (expl) t_control%stda_control%hfx_fraction = hfx
-         CALL section_vals_val_get(stda_section, "EPS_TD_FILTER", r_val=filter, explicit=expl)
-         IF (expl) t_control%stda_control%eps_td_filter = filter
-         CALL section_vals_val_get(stda_section, "DO_EWALD", l_val=do_ewald, explicit=expl)
-         IF (expl) t_control%stda_control%do_ewald = do_ewald
-         CALL section_vals_val_get(stda_section, "DO_EXCHANGE", l_val=do_exchange, explicit=expl)
-         IF (expl) t_control%stda_control%do_exchange = do_exchange
-         CALL section_vals_val_get(stda_section, "MATAGA_NISHIMOTO_CEXP", r_val=fval)
-         t_control%stda_control%mn_alpha = fval
-         CALL section_vals_val_get(stda_section, "MATAGA_NISHIMOTO_XEXP", r_val=fval)
-         t_control%stda_control%mn_beta = fval
+         CALL section_vals_get(stda_section, explicit=explicit)
+         IF (explicit) THEN
+            CALL section_vals_val_get(stda_section, "HFX_FRACTION", r_val=hfx, explicit=expl)
+            IF (expl) t_control%stda_control%hfx_fraction = hfx
+            CALL section_vals_val_get(stda_section, "EPS_TD_FILTER", r_val=filter, explicit=expl)
+            IF (expl) t_control%stda_control%eps_td_filter = filter
+            CALL section_vals_val_get(stda_section, "DO_EWALD", l_val=do_ewald, explicit=expl)
+            IF (expl) t_control%stda_control%do_ewald = do_ewald
+            CALL section_vals_val_get(stda_section, "DO_EXCHANGE", l_val=do_exchange, explicit=expl)
+            IF (expl) t_control%stda_control%do_exchange = do_exchange
+            CALL section_vals_val_get(stda_section, "MATAGA_NISHIMOTO_CEXP", r_val=fval)
+            t_control%stda_control%mn_alpha = fval
+            CALL section_vals_val_get(stda_section, "MATAGA_NISHIMOTO_XEXP", r_val=fval)
+            t_control%stda_control%mn_beta = fval
+         END IF
          CALL section_vals_val_get(stda_section, "COULOMB_SR_CUT", r_val=fval)
          t_control%stda_control%coulomb_sr_cut = fval
          CALL section_vals_val_get(stda_section, "COULOMB_SR_EPS", r_val=fval)
@@ -2161,6 +2168,9 @@ CONTAINS
                                    i_val=efield%envelop_id)
          CALL section_vals_val_get(efield_section, "WAVELENGTH", i_rep_section=i, &
                                    r_val=efield%wavelength)
+         CALL section_vals_val_get(efield_section, "VEC_POT_INITIAL", i_rep_section=i, &
+                                   r_vals=tmp_vals)
+         efield%vec_pot_initial = tmp_vals
 
          IF (efield%envelop_id == constant_env) THEN
             ALLOCATE (efield%envelop_i_vars(2))

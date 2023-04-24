@@ -21,7 +21,6 @@ MODULE thermostat_utils
                                               cp_print_key_finished_output,&
                                               cp_print_key_should_output,&
                                               cp_print_key_unit_nr
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE cp_units,                        ONLY: cp_unit_from_cp2k
    USE distribution_1d_types,           ONLY: distribution_1d_type
    USE extended_system_types,           ONLY: lnhc_parameters_type,&
@@ -42,7 +41,7 @@ MODULE thermostat_utils
                                               dp
    USE machine,                         ONLY: m_flush
    USE message_passing,                 ONLY: mp_comm_type,&
-                                              mp_sum
+                                              mp_para_env_type
    USE molecule_kind_types,             ONLY: get_molecule_kind,&
                                               get_molecule_kind_set,&
                                               molecule_kind_type
@@ -938,7 +937,7 @@ CONTAINS
          END DO
       END DO
 
-      IF (map_info%dis_type == do_thermo_communication) CALL mp_sum(map_info%s_kin, group)
+      IF (map_info%dis_type == do_thermo_communication) CALL group%sum(map_info%s_kin)
 
    END SUBROUTINE ke_region_baro
 
@@ -1027,7 +1026,7 @@ CONTAINS
          END DO
       END DO
 
-      IF (map_info%dis_type == do_thermo_communication) CALL mp_sum(map_info%s_kin, group)
+      IF (map_info%dis_type == do_thermo_communication) CALL group%sum(map_info%s_kin)
 
    END SUBROUTINE ke_region_particles
 
@@ -1087,7 +1086,7 @@ CONTAINS
          END DO
       END DO
 
-      IF (map_info%dis_type == do_thermo_communication) CALL mp_sum(map_info%s_kin, group)
+      IF (map_info%dis_type == do_thermo_communication) CALL group%sum(map_info%s_kin)
 
    END SUBROUTINE momentum_region_particles
 
@@ -1274,7 +1273,7 @@ CONTAINS
             END DO
          END IF
       END DO
-      IF (map_info%dis_type == do_thermo_communication) CALL mp_sum(map_info%s_kin, group)
+      IF (map_info%dis_type == do_thermo_communication) CALL group%sum(map_info%s_kin)
 
    END SUBROUTINE ke_region_shells
 
@@ -1379,7 +1378,7 @@ CONTAINS
    SUBROUTINE get_nhc_energies(nhc, nhc_pot, nhc_kin, para_env, array_kin, array_pot)
       TYPE(lnhc_parameters_type), POINTER                :: nhc
       REAL(KIND=dp), INTENT(OUT)                         :: nhc_pot, nhc_kin
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       REAL(KIND=dp), DIMENSION(:), OPTIONAL, POINTER     :: array_kin, array_pot
 
       INTEGER                                            :: imap, l, n, number
@@ -1400,8 +1399,8 @@ CONTAINS
 
       ! Handle the thermostat distribution
       IF (nhc%map_info%dis_type == do_thermo_no_communication) THEN
-         CALL mp_sum(akin, para_env%group)
-         CALL mp_sum(vpot, para_env%group)
+         CALL para_env%sum(akin)
+         CALL para_env%sum(vpot)
       ELSE IF (nhc%map_info%dis_type == do_thermo_communication) THEN
          CALL communication_thermo_low1(akin, number, para_env)
          CALL communication_thermo_low1(vpot, number, para_env)
@@ -1451,7 +1450,7 @@ CONTAINS
       INTEGER, INTENT(IN)                                :: loc_num, glob_num
       REAL(dp), DIMENSION(:), INTENT(IN)                 :: thermo_energy
       REAL(KIND=dp), INTENT(OUT)                         :: thermostat_kin
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       REAL(KIND=dp), DIMENSION(:), OPTIONAL, POINTER     :: array_pot, array_kin
 
       INTEGER                                            :: imap, n, number
@@ -1467,7 +1466,7 @@ CONTAINS
 
       ! Handle the thermostat distribution
       IF (map_info%dis_type == do_thermo_no_communication) THEN
-         CALL mp_sum(akin, para_env%group)
+         CALL para_env%sum(akin)
       ELSE IF (map_info%dis_type == do_thermo_communication) THEN
          CALL communication_thermo_low1(akin, number, para_env)
       END IF
@@ -1512,7 +1511,7 @@ CONTAINS
       TYPE(map_info_type), POINTER                       :: map_info
       INTEGER, INTENT(IN)                                :: loc_num, glob_num
       REAL(dp), DIMENSION(:), INTENT(IN)                 :: nkt, dof
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       REAL(KIND=dp), INTENT(OUT)                         :: temp_tot
       REAL(KIND=dp), DIMENSION(:), OPTIONAL, POINTER     :: array_temp
 
@@ -1535,8 +1534,8 @@ CONTAINS
 
       ! Handle the thermostat distribution
       IF (map_info%dis_type == do_thermo_no_communication) THEN
-         CALL mp_sum(akin, para_env%group)
-         CALL mp_sum(deg_of_free, para_env%group)
+         CALL para_env%sum(akin)
+         CALL para_env%sum(deg_of_free)
       ELSE IF (map_info%dis_type == do_thermo_communication) THEN
          CALL communication_thermo_low1(akin, number, para_env)
          CALL communication_thermo_low1(deg_of_free, number, para_env)
@@ -1576,7 +1575,7 @@ CONTAINS
                                       array_pot, array_kin)
       TYPE(thermostat_type), POINTER                     :: thermostat
       REAL(KIND=dp), INTENT(OUT)                         :: thermostat_pot, thermostat_kin
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       REAL(KIND=dp), DIMENSION(:), OPTIONAL, POINTER     :: array_pot, array_kin
 
       INTEGER                                            :: i
@@ -1632,7 +1631,7 @@ CONTAINS
    SUBROUTINE get_region_temperatures(thermostat, tot_temperature, para_env, array_temp)
       TYPE(thermostat_type), POINTER                     :: thermostat
       REAL(KIND=dp), INTENT(OUT)                         :: tot_temperature
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       REAL(KIND=dp), DIMENSION(:), OPTIONAL, POINTER     :: array_temp
 
       INTEGER                                            :: i
@@ -1711,7 +1710,7 @@ CONTAINS
 ! **************************************************************************************************
    SUBROUTINE print_thermostats_status(thermostats, para_env, my_pos, my_act, itimes, time)
       TYPE(thermostats_type), POINTER                    :: thermostats
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       CHARACTER(LEN=default_string_length)               :: my_pos, my_act
       INTEGER, INTENT(IN)                                :: itimes
       REAL(KIND=dp), INTENT(IN)                          :: time
@@ -1744,7 +1743,7 @@ CONTAINS
 ! **************************************************************************************************
    SUBROUTINE print_thermostat_status(thermostat, para_env, my_pos, my_act, itimes, time)
       TYPE(thermostat_type), POINTER                     :: thermostat
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       CHARACTER(LEN=default_string_length)               :: my_pos, my_act
       INTEGER, INTENT(IN)                                :: itimes
       REAL(KIND=dp), INTENT(IN)                          :: time
@@ -1822,7 +1821,7 @@ CONTAINS
    SUBROUTINE communication_thermo_low1(array, number, para_env)
       REAL(KIND=dp), DIMENSION(:), INTENT(INOUT)         :: array
       INTEGER, INTENT(IN)                                :: number
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
 
       INTEGER                                            :: i, icheck, ncheck
       REAL(KIND=dp), DIMENSION(:), POINTER               :: work, work2
@@ -1831,7 +1830,7 @@ CONTAINS
       DO i = 1, number
          work = 0.0_dp
          work(para_env%mepos + 1) = array(i)
-         CALL mp_sum(work, para_env%group)
+         CALL para_env%sum(work)
          ncheck = COUNT(work /= 0.0_dp)
          array(i) = 0.0_dp
          IF (ncheck /= 0) THEN
@@ -1864,7 +1863,7 @@ CONTAINS
    SUBROUTINE communication_thermo_low2(array, number1, number2, para_env)
       INTEGER, DIMENSION(:, :), INTENT(INOUT)            :: array
       INTEGER, INTENT(IN)                                :: number1, number2
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
 
       INTEGER                                            :: i, icheck, j, ncheck
       INTEGER, DIMENSION(:, :), POINTER                  :: work, work2
@@ -1873,7 +1872,7 @@ CONTAINS
       DO i = 1, number2
          work = 0
          work(:, para_env%mepos + 1) = array(:, i)
-         CALL mp_sum(work, para_env%group)
+         CALL para_env%sum(work)
          ncheck = 0
          DO j = 1, para_env%num_pe
             IF (ANY(work(:, j) /= 0)) THEN

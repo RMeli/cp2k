@@ -25,7 +25,6 @@ MODULE qs_kpp1_env_methods
    USE cp_output_handling,              ONLY: cp_print_key_finished_output,&
                                               cp_print_key_should_output,&
                                               cp_print_key_unit_nr
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE dbcsr_api,                       ONLY: dbcsr_add,&
                                               dbcsr_copy,&
                                               dbcsr_p_type,&
@@ -48,7 +47,7 @@ MODULE qs_kpp1_env_methods
                                               lri_environment_type,&
                                               lri_kind_type
    USE lri_ks_methods,                  ONLY: calculate_lri_ks_matrix
-   USE message_passing,                 ONLY: mp_sum
+   USE message_passing,                 ONLY: mp_para_env_type
    USE pw_env_types,                    ONLY: pw_env_get,&
                                               pw_env_type
    USE pw_methods,                      ONLY: pw_axpy,&
@@ -217,12 +216,12 @@ CONTAINS
       REAL(KIND=dp)                                      :: alpha, energy_hartree, energy_hartree_1c
       TYPE(atomic_kind_type), DIMENSION(:), POINTER      :: atomic_kind_set
       TYPE(cp_logger_type), POINTER                      :: logger
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: k1mat, rho_ao
       TYPE(dbcsr_p_type), DIMENSION(:, :), POINTER       :: ksmat, psmat
       TYPE(lri_density_type), POINTER                    :: lri_density
       TYPE(lri_environment_type), POINTER                :: lri_env
       TYPE(lri_kind_type), DIMENSION(:), POINTER         :: lri_v_int
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(pw_env_type), POINTER                         :: pw_env
       TYPE(pw_poisson_type), POINTER                     :: poisson_env
       TYPE(pw_pool_type), POINTER                        :: auxbas_pw_pool
@@ -492,7 +491,7 @@ CONTAINS
                CALL integrate_v_rspace_one_center(v_rspace_new(ispin), qs_env, &
                                                   lri_v_int, .FALSE., "LRI_AUX")
                DO ikind = 1, nkind
-                  CALL mp_sum(lri_v_int(ikind)%v_int, para_env%group)
+                  CALL para_env%sum(lri_v_int(ikind)%v_int)
                END DO
                ALLOCATE (k1mat(1))
                k1mat(1)%matrix => p_env%kpp1_env%v_ao(ispin)%matrix

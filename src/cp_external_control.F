@@ -23,9 +23,7 @@ MODULE cp_external_control
    USE kinds,                           ONLY: default_string_length,&
                                               dp
    USE machine,                         ONLY: m_walltime
-   USE message_passing,                 ONLY: mp_bcast,&
-                                              mp_comm_type,&
-                                              mp_probe
+   USE message_passing,                 ONLY: mp_comm_type
 #include "./base/base_uses.f90"
 
    IMPLICIT NONE
@@ -56,7 +54,7 @@ CONTAINS
 ! **************************************************************************************************
    SUBROUTINE set_external_comm(comm, in_external_master_id, &
                                 in_scf_energy_message_tag, in_exit_tag)
-      TYPE(mp_comm_type), INTENT(IN)                     :: comm
+      CLASS(mp_comm_type), INTENT(IN)                     :: comm
       INTEGER, INTENT(IN)                                :: in_external_master_id
       INTEGER, INTENT(IN), OPTIONAL                      :: in_scf_energy_message_tag, in_exit_tag
 
@@ -68,7 +66,7 @@ CONTAINS
       IF (PRESENT(in_scf_energy_message_tag)) &
          scf_energy_message_tag = in_scf_energy_message_tag
       IF (PRESENT(in_exit_tag)) THEN
-         ! the exit tag should be different from the mp_probe tag default
+         ! the exit tag should be different from the mpi_probe tag default
          CPASSERT(in_exit_tag .NE. -1)
          exit_tag = in_exit_tag
       END IF
@@ -127,11 +125,11 @@ CONTAINS
       ! check for incomming messages and if it is tagged with the exit tag
       IF (exit_tag .NE. -1) THEN
          i = external_master_id
-         CALL mp_probe(source=i, comm=external_comm, tag=tag)
+         CALL external_comm%probe(source=i, tag=tag)
          IF (tag .EQ. exit_tag) should_stop = .TRUE.
       END IF
 
-      IF (logger%para_env%ionode) THEN
+      IF (logger%para_env%is_source()) THEN
          ! files will only be checked every 20 seconds, or if the clock wraps/does not exist,
          ! otherwise 64 waters on 64 cores can spend up to 10% of time here, on lustre
          ! however, if should_stop has been true, we should always check
@@ -225,7 +223,7 @@ CONTAINS
             END IF
          END IF
       END IF
-      CALL mp_bcast(should_stop, logger%para_env%source, logger%para_env%group)
+      CALL logger%para_env%bcast(should_stop)
 
       check_always = should_stop
 

@@ -12,12 +12,15 @@
 !> \author JGH
 ! **************************************************************************************************
 MODULE qs_active_space_methods
-   USE atomic_kind_types,               ONLY: atomic_kind_type,&
-                                              get_atomic_kind
-   USE basis_set_types,                 ONLY: &
-        allocate_sto_basis_set, create_gto_from_sto_basis, deallocate_gto_basis_set, &
-        deallocate_sto_basis_set, gto_basis_set_type, init_orb_basis_set, set_sto_basis_set, &
-        srules, sto_basis_set_type
+   USE atomic_kind_types,               ONLY: atomic_kind_type
+   USE basis_set_types,                 ONLY: allocate_sto_basis_set,&
+                                              create_gto_from_sto_basis,&
+                                              deallocate_sto_basis_set,&
+                                              gto_basis_set_type,&
+                                              init_orb_basis_set,&
+                                              set_sto_basis_set,&
+                                              srules,&
+                                              sto_basis_set_type
    USE cell_types,                      ONLY: cell_type
    USE cp_blacs_env,                    ONLY: cp_blacs_env_type
    USE cp_control_types,                ONLY: dft_control_type
@@ -35,7 +38,6 @@ MODULE qs_active_space_methods
    USE cp_fm_types,                     ONLY: &
         cp_fm_create, cp_fm_get_element, cp_fm_get_info, cp_fm_init_random, cp_fm_release, &
         cp_fm_set_all, cp_fm_set_element, cp_fm_to_fm, cp_fm_type
-   USE cp_fm_vect,                      ONLY: cp_fm_vect_dealloc
    USE cp_log_handling,                 ONLY: cp_get_default_logger,&
                                               cp_logger_get_default_io_unit,&
                                               cp_logger_type
@@ -43,7 +45,6 @@ MODULE qs_active_space_methods
         cp_p_file, cp_print_key_finished_output, cp_print_key_should_output, cp_print_key_unit_nr, &
         debug_print_level, high_print_level, low_print_level, medium_print_level, &
         silent_print_level
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE cp_realspace_grid_cube,          ONLY: cp_pw_to_cube
    USE dbcsr_api,                       ONLY: dbcsr_copy,&
                                               dbcsr_csr_create,&
@@ -64,9 +65,8 @@ MODULE qs_active_space_methods
    USE machine,                         ONLY: m_walltime
    USE mathconstants,                   ONLY: fourpi
    USE memory_utilities,                ONLY: reallocate
-   USE message_passing,                 ONLY: mp_bcast,&
-                                              mp_comm_type,&
-                                              mp_sum
+   USE message_passing,                 ONLY: mp_comm_type,&
+                                              mp_para_env_type
    USE parallel_gemm_api,               ONLY: parallel_gemm
    USE particle_list_types,             ONLY: particle_list_type
    USE particle_types,                  ONLY: particle_type
@@ -113,13 +113,6 @@ MODULE qs_active_space_methods
    USE qs_ks_methods,                   ONLY: qs_ks_update_qs_env
    USE qs_ks_types,                     ONLY: qs_ks_did_change,&
                                               qs_ks_env_type
-   USE qs_loc_methods,                  ONLY: qs_loc_driver
-   USE qs_loc_types,                    ONLY: qs_loc_env_create,&
-                                              qs_loc_env_release,&
-                                              qs_loc_env_type
-   USE qs_loc_utils,                    ONLY: qs_loc_control_init,&
-                                              qs_loc_env_init,&
-                                              qs_loc_init
    USE qs_mo_io,                        ONLY: write_mo_set_to_output_unit
    USE qs_mo_methods,                   ONLY: calculate_subspace_eigenvalues
    USE qs_mo_types,                     ONLY: allocate_mo_set,&
@@ -196,7 +189,7 @@ CONTAINS
       INTEGER :: eri_method, eri_operator, eri_print, handle, i, iatom, ishell, isp, ispin, iw, j, &
          jm, l, m, max_orb_ind, mselect, n1, n2, nao, natom, ncol, nel, nelec_active, &
          nelec_inactive, nelec_inactive_alpha, nelec_inactive_beta, nelec_total, nmo, nn1, nn2, &
-         nrow_global, nspins, nvirt, zval
+         nrow_global, nspins, nvirt
       INTEGER, ALLOCATABLE, DIMENSION(:, :)              :: active_orbitals
       INTEGER, DIMENSION(2)                              :: nactive_orb, nepol, ninactive_orb
       INTEGER, DIMENSION(5)                              :: nshell
@@ -209,25 +202,20 @@ CONTAINS
       REAL(KIND=dp), ALLOCATABLE, DIMENSION(:, :)        :: eigenvalues
       REAL(KIND=dp), DIMENSION(:), POINTER               :: evals_virt
       TYPE(active_space_type), POINTER                   :: active_space_env
-      TYPE(atomic_kind_type), POINTER                    :: atomic_kind
       TYPE(cell_type), POINTER                           :: cell
       TYPE(cp_blacs_env_type), POINTER                   :: context
       TYPE(cp_fm_struct_type), POINTER                   :: fm_struct_tmp
       TYPE(cp_fm_type)                                   :: fm_dummy, mo_virt
-      TYPE(cp_fm_type), ALLOCATABLE, DIMENSION(:)        :: mos_localized
       TYPE(cp_fm_type), POINTER                          :: fm_ref, fm_target, fm_target_active, &
                                                             fm_target_inactive, fmat, mo_coeff
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_csr_type), POINTER                      :: eri_mat
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: ks_matrix, rho_ao, s_matrix
       TYPE(dbcsr_type), POINTER                          :: denmat
       TYPE(dft_control_type), POINTER                    :: dft_control
-      TYPE(gto_basis_set_type), POINTER                  :: pro_basis_set
       TYPE(mo_set_type), DIMENSION(:), POINTER           :: mos
       TYPE(mo_set_type), POINTER                         :: mo_set, mo_set_active, mo_set_inactive
-      TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(preconditioner_type), POINTER                 :: local_preconditioner
-      TYPE(qs_loc_env_type), POINTER                     :: qs_loc_env_occ, qs_loc_env_virt
       TYPE(qs_rho_type), POINTER                         :: rho
       TYPE(scf_control_type), POINTER                    :: scf_control
       TYPE(section_vals_type), POINTER                   :: as_input, loc_print, loc_section, &
@@ -817,57 +805,6 @@ CONTAINS
          loc_section => section_vals_get_subs_vals(as_input, "LOCALIZE")
          CPASSERT(ASSOCIATED(loc_section))
          loc_print => section_vals_get_subs_vals(as_input, "LOCALIZE%PRINT")
-         ALLOCATE (mos_localized(nspins))
-         CALL get_qs_env(qs_env, mos=mos)
-         DO ispin = 1, nspins
-            CALL get_mo_set(mo_set=mos(ispin), mo_coeff=mo_coeff)
-            CALL cp_fm_create(mos_localized(ispin), mo_coeff%matrix_struct)
-            CALL cp_fm_to_fm(mo_coeff, mos_localized(ispin))
-         END DO
-         ! occupied states
-         NULLIFY (qs_loc_env_occ)
-         ALLOCATE (qs_loc_env_occ)
-         CALL qs_loc_env_create(qs_loc_env_occ)
-         CALL qs_loc_control_init(qs_loc_env_occ, loc_section, do_homo=.TRUE.)
-         CALL qs_loc_init(qs_env, qs_loc_env_occ, loc_section, &
-                          mos_localized=mos_localized, do_homo=.TRUE.)
-         DO ispin = 1, nspins
-            CALL qs_loc_driver(qs_env, qs_loc_env_occ, loc_print, myspin=ispin, &
-                               ext_mo_coeff=mos_localized(ispin))
-         END DO
-         ! virtual states
-         NULLIFY (qs_loc_env_virt)
-         ALLOCATE (qs_loc_env_virt)
-         CALL qs_loc_env_create(qs_loc_env_virt)
-         CALL qs_loc_control_init(qs_loc_env_virt, loc_section, do_homo=.FALSE.)
-         CALL qs_loc_init(qs_env, qs_loc_env_virt, loc_section, &
-                          mos_localized=mos_localized, do_homo=.FALSE.)
-         CALL qs_loc_env_init(qs_loc_env_virt, qs_loc_env_virt%localized_wfn_control, qs_env, &
-                              loc_coeff=mos_localized)
-         DO ispin = 1, nspins
-            CALL qs_loc_driver(qs_env, qs_loc_env_virt, loc_print, myspin=ispin, &
-                               ext_mo_coeff=mos_localized(ispin))
-         END DO
-         !
-         ! get definition of subspace
-         ! iatom, ishell, nshell, lnam
-         CPASSERT(iatom > 0)
-         CPASSERT(ishell > 0)
-         CALL get_qs_env(qs_env, particle_set=particle_set)
-         atomic_kind => particle_set(iatom)%atomic_kind
-         CALL get_atomic_kind(atomic_kind=atomic_kind, z=zval)
-         NULLIFY (pro_basis_set)
-         CALL create_pro_basis(pro_basis_set, zval, ishell, nshell, lnam)
-         !
-         CALL deallocate_gto_basis_set(pro_basis_set)
-         !
-         CPABORT("not yet available")
-         !
-         CALL qs_loc_env_release(qs_loc_env_occ)
-         DEALLOCATE (qs_loc_env_occ)
-         CALL qs_loc_env_release(qs_loc_env_virt)
-         DEALLOCATE (qs_loc_env_virt)
-         CALL cp_fm_vect_dealloc(mos_localized)
          !
          CPABORT("not yet available")
          !
@@ -1010,7 +947,7 @@ CONTAINS
          END IF
          nn1 = (n1*(n1 + 1))/2
          nn2 = (n2*(n2 + 1))/2
-         CALL dbcsr_csr_create(eri_mat, nn1, nn2, 0_int_8, 0, 0, para_env%group%get_handle())
+         CALL dbcsr_csr_create(eri_mat, nn1, nn2, 0_int_8, 0, 0, para_env%get_handle())
          active_space_env%eri%norb = nmo
       END DO
 
@@ -1148,12 +1085,8 @@ CONTAINS
       nspins = active_space_env%nspins
 
       ! Kohn-Sham / Fock operator
-      IF (ASSOCIATED(active_space_env%ks_sub)) THEN
-         DO is = 1, SIZE(active_space_env%ks_sub)
-            CALL cp_fm_release(active_space_env%ks_sub(is))
-         END DO
-         DEALLOCATE (active_space_env%ks_sub)
-      END IF
+      CALL cp_fm_release(active_space_env%ks_sub)
+
       CALL get_qs_env(qs_env, matrix_ks_kp=ks_matrix)
       IF (SIZE(ks_matrix, 2) > 1) THEN
          CPABORT("No k-points allowed at this point")
@@ -1165,12 +1098,8 @@ CONTAINS
       END DO
 
       ! Vxc matrix
-      IF (ASSOCIATED(active_space_env%vxc_sub)) THEN
-         DO is = 1, SIZE(active_space_env%vxc_sub)
-            CALL cp_fm_release(active_space_env%vxc_sub(is))
-         END DO
-         DEALLOCATE (active_space_env%vxc_sub)
-      END IF
+      CALL cp_fm_release(active_space_env%vxc_sub)
+
       NULLIFY (matrix_vxc)
       CALL get_qs_env(qs_env, matrix_vxc=matrix_vxc)
       IF (ASSOCIATED(matrix_vxc)) THEN
@@ -1182,12 +1111,8 @@ CONTAINS
       END IF
 
       ! Core Hamiltonian
-      IF (ASSOCIATED(active_space_env%h_sub)) THEN
-         DO is = 1, SIZE(active_space_env%h_sub)
-            CALL cp_fm_release(active_space_env%h_sub(is))
-         END DO
-         DEALLOCATE (active_space_env%h_sub)
-      END IF
+      CALL cp_fm_release(active_space_env%h_sub)
+
       NULLIFY (h_matrix)
       CALL get_qs_env(qs_env=qs_env, matrix_h_kp=h_matrix)
       IF (SIZE(h_matrix, 2) > 1) THEN
@@ -1451,13 +1376,13 @@ CONTAINS
       rho_r%cr3d = 0.0D0
       CALL pw_transfer(rho_r, rho_g)
       dvol = rho_r%pw_grid%dvol
+      CALL mp_group%set_handle(eri_env%eri(1)%csr_mat%mp_group)
 
       ! calculate the integrals
       intcount = 0
       DO isp1 = 1, nspins
          CALL get_mo_set(mo_set=mos(isp1), nmo=nmo1)
          nmm = (nmo1*(nmo1 + 1))/2
-         CALL mp_group%set_handle(eri_env%eri(1)%csr_mat%mp_group)
          irange = get_irange_csr(nmm, mp_group)
          DO i1 = 1, SIZE(orbitals, 1)
             iwa1 = orbitals(i1, isp1)
@@ -1758,8 +1683,8 @@ CONTAINS
       TYPE(atomic_kind_type), DIMENSION(:), POINTER      :: atomic_kind_set
       TYPE(cell_type), POINTER                           :: cell
       TYPE(cp_fm_type), POINTER                          :: mo_coeff
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dft_control_type), POINTER                    :: dft_control
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(particle_list_type), POINTER                  :: particles
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
       TYPE(pw_env_type), POINTER                         :: pw_env
@@ -1844,7 +1769,7 @@ CONTAINS
             IF (.NOT. do_mo) CYCLE
             CALL calculate_wavefunction(mo_coeff, imo, wf_r, wf_g, atomic_kind_set, &
                                         qs_kind_set, cell, dft_control, particle_set, pw_env)
-            IF (para_env%ionode) THEN
+            IF (para_env%is_source()) THEN
                WRITE (filename, '(A,A1,I4.4,A1,I1.1,A)') TRIM(filebody), "_", imo, "_", isp, ".cube"
                CALL open_file(filename, unit_number=unit_nr, file_status="UNKNOWN", file_action="WRITE")
                WRITE (title, *) "Active Orbital ", imo, " spin ", isp
@@ -1852,7 +1777,7 @@ CONTAINS
                unit_nr = -1
             END IF
             CALL cp_pw_to_cube(wf_r, unit_nr, title, particles=particles, stride=istride)
-            IF (para_env%ionode) THEN
+            IF (para_env%is_source()) THEN
                CALL close_file(unit_nr)
             END IF
          END DO
@@ -2087,12 +2012,7 @@ CONTAINS
          !
          active_space_env%energy_inactive = esub
          !
-         IF (ASSOCIATED(active_space_env%fock_sub)) THEN
-            DO is = 1, SIZE(active_space_env%fock_sub)
-               CALL cp_fm_release(active_space_env%fock_sub(is))
-            END DO
-            DEALLOCATE (active_space_env%fock_sub)
-         END IF
+         CALL cp_fm_release(active_space_env%fock_sub)
          ALLOCATE (active_space_env%fock_sub(nspins))
          DO is = 1, nspins
             matrix => active_space_env%ks_sub(is)
@@ -2141,12 +2061,7 @@ CONTAINS
          !
          active_space_env%energy_inactive = esub
          !
-         IF (ASSOCIATED(active_space_env%fock_sub)) THEN
-            DO is = 1, SIZE(active_space_env%fock_sub)
-               CALL cp_fm_release(active_space_env%fock_sub(is))
-            END DO
-            DEALLOCATE (active_space_env%fock_sub)
-         END IF
+         CALL cp_fm_release(active_space_env%fock_sub)
          ALLOCATE (active_space_env%fock_sub(nspins))
          DO is = 1, nspins
             matrix => active_space_env%ks_sub(is)
@@ -2244,7 +2159,7 @@ CONTAINS
             ks_ref(i2, i1) = ks_ref(i1, i2)
          END DO
       END DO
-      CALL mp_sum(ks_ref, mp_group)
+      CALL mp_group%sum(ks_ref)
 
    END SUBROUTINE build_subspace_fock_matrix
 
@@ -2360,7 +2275,7 @@ CONTAINS
          END DO
       END DO
       CALL mp_group%set_handle(eri_aa%mp_group)
-      CALL mp_sum(ks_a_ref, mp_group)
+      CALL mp_group%sum(ks_a_ref)
 
    END SUBROUTINE build_subspace_spin_fock_matrix
 
@@ -2445,10 +2360,10 @@ CONTAINS
       TYPE(cp_fm_type)                                   :: lamat, vec
       TYPE(cp_fm_type), DIMENSION(:), POINTER            :: p_ref
       TYPE(cp_fm_type), POINTER                          :: fm_active, pmat
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: rho_ao
       TYPE(dbcsr_type), POINTER                          :: pinact
       TYPE(mo_set_type), DIMENSION(:), POINTER           :: mos
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(qs_energy_type), POINTER                      :: energy
       TYPE(qs_rho_type), POINTER                         :: rho
 
@@ -2651,7 +2566,7 @@ CONTAINS
 ! **************************************************************************************************
    SUBROUTINE read_active_density(active_space_env, para_env)
       TYPE(active_space_type), POINTER                   :: active_space_env
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
 
       CHARACTER(LEN=default_path_length)                 :: p_act_filename
       INTEGER                                            :: i1, i2, ispin, l_global, LLL, m1, m2, &
@@ -2687,7 +2602,7 @@ CONTAINS
       p_act_filename = active_space_env%p_act_filename
 
       ! Read matrices into fm objects
-      IF (para_env%ionode) THEN
+      IF (para_env%is_source()) THEN
          ! Check, whether the file exists
          INQUIRE (FILE=p_act_filename, exist=exist)
          IF (.NOT. exist) &
@@ -2734,7 +2649,7 @@ CONTAINS
          END IF
 
          ! Close restart file
-         IF (para_env%ionode) THEN
+         IF (para_env%is_source()) THEN
             CALL close_file(unit_number=p_active_unit)
          END IF
 
@@ -2742,8 +2657,8 @@ CONTAINS
 
       ! Copy to full matrix structure
       ! Broadcast the DM on all processes
-      CALL mp_bcast(p_act, para_env%source, para_env%group)
-      IF (nspins .EQ. 2) CALL mp_bcast(p_act_beta, para_env%source, para_env%group)
+      CALL para_env%bcast(p_act, para_env%source)
+      IF (nspins .EQ. 2) CALL para_env%bcast(p_act_beta, para_env%source)
 
       DO ispin = 1, nspins
          ! Copy to fm_type structure

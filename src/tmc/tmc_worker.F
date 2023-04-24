@@ -33,7 +33,6 @@ MODULE tmc_worker
                                               init_cell
    USE cp_external_control,             ONLY: set_external_comm
    USE cp_log_handling,                 ONLY: cp_to_string
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE cp_result_methods,               ONLY: cp_results_erase,&
                                               put_results
    USE cp_result_types,                 ONLY: cp_result_type
@@ -48,7 +47,8 @@ MODULE tmc_worker
                                               force_env_get_natom
    USE kinds,                           ONLY: default_string_length,&
                                               dp
-   USE message_passing,                 ONLY: mp_comm_type
+   USE message_passing,                 ONLY: mp_comm_type,&
+                                              mp_para_env_type
    USE molecule_list_types,             ONLY: molecule_list_type
    USE particle_list_types,             ONLY: particle_list_type
    USE tmc_analysis,                    ONLY: analysis_init,&
@@ -122,7 +122,7 @@ CONTAINS
                                                             num_dim, work_stat
       INTEGER, DIMENSION(:), POINTER                     :: ana_restart_conf
       LOGICAL                                            :: flag, master
-      TYPE(cp_para_env_type), POINTER                    :: para_env_m_w
+      TYPE(mp_para_env_type), POINTER                    :: para_env_m_w
       TYPE(tree_type), POINTER                           :: conf
 
       master = .FALSE.
@@ -169,9 +169,9 @@ CONTAINS
             !  and sending additional information (e.g. the intermediate scf energies)
             IF (tmc_env%params%use_scf_energy_info) &
                CALL set_intermediate_info_comm(env_id=itmp, &
-                                               comm=tmc_env%tmc_comp_set%para_env_m_w%group)
+                                               comm=tmc_env%tmc_comp_set%para_env_m_w)
             IF (tmc_env%params%SPECULATIVE_CANCELING) &
-               CALL set_external_comm(comm=tmc_env%tmc_comp_set%para_env_m_w%group, &
+               CALL set_external_comm(comm=tmc_env%tmc_comp_set%para_env_m_w, &
                                       in_external_master_id=MASTER_COMM_ID, &
                                       in_exit_tag=TMC_CANCELING_MESSAGE)
          END IF
@@ -856,7 +856,7 @@ CONTAINS
 !> \author Mandes 10.2013
 ! **************************************************************************************************
    SUBROUTINE set_intermediate_info_comm(comm, env_id)
-      TYPE(mp_comm_type), INTENT(IN)                     :: comm
+      CLASS(mp_comm_type), INTENT(IN)                     :: comm
       INTEGER                                            :: env_id
 
       CHARACTER(LEN=default_string_length)               :: description

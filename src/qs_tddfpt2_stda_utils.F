@@ -40,7 +40,6 @@ MODULE qs_tddfpt2_stda_utils
    USE cp_log_handling,                 ONLY: cp_get_default_logger,&
                                               cp_logger_get_default_io_unit,&
                                               cp_logger_type
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE dbcsr_api,                       ONLY: &
         dbcsr_add_on_diag, dbcsr_create, dbcsr_distribution_type, dbcsr_filter, dbcsr_finalize, &
         dbcsr_get_block_p, dbcsr_iterator_blocks_left, dbcsr_iterator_next_block, &
@@ -61,7 +60,7 @@ MODULE qs_tddfpt2_stda_utils
    USE iterate_matrix,                  ONLY: matrix_sqrt_Newton_Schulz
    USE kinds,                           ONLY: dp
    USE mathconstants,                   ONLY: oorootpi
-   USE message_passing,                 ONLY: mp_sum
+   USE message_passing,                 ONLY: mp_para_env_type
    USE particle_methods,                ONLY: get_particle_set
    USE particle_types,                  ONLY: particle_type
    USE qs_environment_types,            ONLY: get_qs_env,&
@@ -413,8 +412,8 @@ CONTAINS
                          "Overlap matrix exhibits linear dependencies. At least some "// &
                          "eigenvalues have been quenched.")
          CALL copy_fm_to_dbcsr(fm_s_half, sm_h)
-         CALL cp_fm_release(matrix=fm_s_half)
-         CALL cp_fm_release(matrix=fm_work1)
+         CALL cp_fm_release(fm_s_half)
+         CALL cp_fm_release(fm_work1)
          IF (iounit > 0) WRITE (iounit, *)
       END IF
 
@@ -430,7 +429,7 @@ CONTAINS
       CALL cp_fm_create(matrix=fm_work1, matrix_struct=work%S_eigenvectors%matrix_struct, name="TMP MATRIX")
       CALL copy_dbcsr_to_fm(sm_s, fm_work1)
       CALL choose_eigv_solver(fm_work1, work%S_eigenvectors, work%S_eigenvalues)
-      CALL cp_fm_release(matrix=fm_work1)
+      CALL cp_fm_release(fm_work1)
       !
       ALLOCATE (slam(nsgf, 1))
       DO i = 1, nsgf
@@ -537,12 +536,12 @@ CONTAINS
       TYPE(cp_fm_type)                                   :: cvec, cvecjspin
       TYPE(cp_fm_type), ALLOCATABLE, DIMENSION(:)        :: xtransformed
       TYPE(cp_fm_type), POINTER                          :: ct, ctjspin
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_iterator_type)                          :: iter
       TYPE(dbcsr_type)                                   :: pdens
       TYPE(dbcsr_type), POINTER                          :: tempmat
       TYPE(ewald_environment_type), POINTER              :: ewald_env
       TYPE(ewald_pw_type), POINTER                       :: ewald_pw
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(neighbor_list_set_p_type), DIMENSION(:), &
          POINTER                                         :: n_list
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
@@ -645,7 +644,7 @@ CONTAINS
                CALL tb_spme_evaluate(ewald_env, ewald_pw, particle_set, cell, &
                                      gtcharge, tcharge, calculate_forces, virial, use_virial, atprop)
                ! add self charge interaction contribution
-               IF (para_env%ionode) THEN
+               IF (para_env%is_source()) THEN
                   gtcharge(:, 1) = gtcharge(:, 1) - 2._dp*alpha*oorootpi*tcharge(:)
                END IF
             ELSE
@@ -662,7 +661,7 @@ CONTAINS
                   END DO
                END DO
             END IF
-            CALL mp_sum(gtcharge, para_env%group)
+            CALL para_env%sum(gtcharge)
             ! expand charges
             ! TV(mu) = TC(a of mu)
             tv(1:nsgf) = 0.0_dp
@@ -683,7 +682,6 @@ CONTAINS
          !
          IF (do_exchange) THEN ! option to explicitly switch off exchange
             ! (exchange contributes also if hfx_fraction=0)
-            ALLOCATE (kind_of(natom))
             CALL get_qs_env(qs_env=qs_env, atomic_kind_set=atomic_kind_set)
             CALL get_atomic_kind_set(atomic_kind_set=atomic_kind_set, kind_of=kind_of)
             !
@@ -735,10 +733,7 @@ CONTAINS
          DEALLOCATE (tv)
       END DO
 
-      DO ispin = 1, nspins
-         CALL cp_fm_release(matrix=xtransformed(ispin))
-      END DO
-      DEALLOCATE (xtransformed)
+      CALL cp_fm_release(xtransformed)
       DEALLOCATE (tcharge, gtcharge)
       DEALLOCATE (first_sgf, last_sgf)
 

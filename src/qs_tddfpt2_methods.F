@@ -32,7 +32,6 @@ MODULE qs_tddfpt2_methods
                                               cp_print_key_finished_output,&
                                               cp_print_key_unit_nr,&
                                               cp_rm_iter_level
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE dbcsr_api,                       ONLY: dbcsr_copy,&
                                               dbcsr_create,&
                                               dbcsr_p_type,&
@@ -53,12 +52,14 @@ MODULE qs_tddfpt2_methods
    USE lri_environment_types,           ONLY: lri_density_release,&
                                               lri_env_release
    USE machine,                         ONLY: m_flush
+   USE message_passing,                 ONLY: mp_para_env_type
    USE mulliken,                        ONLY: compute_charges
    USE physcon,                         ONLY: evolt
    USE qs_2nd_kernel_ao,                ONLY: build_dm_response
    USE qs_environment_types,            ONLY: get_qs_env,&
                                               qs_environment_type
-   USE qs_kernel_methods,               ONLY: create_kernel_env
+   USE qs_kernel_methods,               ONLY: create_fxc_kernel,&
+                                              create_kernel_env
    USE qs_kernel_types,                 ONLY: full_kernel_env_type,&
                                               kernel_env_type,&
                                               release_kernel_env
@@ -247,7 +248,8 @@ CONTAINS
 
          ! allocate pools and work matrices
          nstates = tddfpt_control%nstates
-         CALL tddfpt_create_work_matrices(work_matrices, gs_mos, nstates, do_hfx, do_admm, qs_env, sub_env)
+         CALL tddfpt_create_work_matrices(work_matrices, gs_mos, nstates, do_hfx, do_admm, do_exck, &
+                                          qs_env, sub_env)
 
          CALL tddfpt_construct_ground_state_orb_density(rho_orb_struct=work_matrices%rho_orb_struct_sub, &
                                                         rho_xc_struct=work_matrices%rho_xc_struct_sub, &
@@ -293,6 +295,13 @@ CONTAINS
                                    is_rks_triplets=tddfpt_control%rks_triplets, sub_env=sub_env)
             kernel_env%full_kernel => full_kernel_env
             NULLIFY (kernel_env%admm_kernel)
+         END IF
+         ! Fxc from kernel definition
+         kernel_env%full_kernel%do_exck = do_exck
+         ! initilize xc kernel
+         IF (do_exck) THEN
+            CALL create_fxc_kernel(work_matrices%rho_orb_struct_sub, work_matrices%fxc_rspace_sub, &
+                                   xc_section, tddfpt_control%rks_triplets, sub_env, qs_env)
          END IF
       ELSE IF (tddfpt_control%kernel == tddfpt_kernel_stda) THEN
          ! sTDA kernel
@@ -454,7 +463,7 @@ CONTAINS
                                 dipole_op_mos_occ, tddfpt_control%dipole_form)
       CALL tddfpt_print_excitation_analysis(log_unit, evects, evals, gs_mos, matrix_s(1)%matrix, &
                                             min_amplitude=tddfpt_control%min_excitation_amplitude)
-      CALL tddfpt_print_nto_analysis(qs_env, evects, evals, gs_mos, matrix_s(1)%matrix, &
+      CALL tddfpt_print_nto_analysis(qs_env, evects, evals, ostrength, gs_mos, matrix_s(1)%matrix, &
                                      tddfpt_print_section)
 
       IF (tddfpt_control%do_lrigpw) THEN
@@ -501,12 +510,7 @@ CONTAINS
          ! energy
          ex_env%evalue = evals(my_state)
          ! excitation vector
-         IF (ASSOCIATED(ex_env%evect)) THEN
-            DO ispin = 1, SIZE(ex_env%evect)
-               CALL cp_fm_release(ex_env%evect(ispin))
-            END DO
-            DEALLOCATE (ex_env%evect)
-         END IF
+         CALL cp_fm_release(ex_env%evect)
          ALLOCATE (ex_env%evect(nspins))
          DO ispin = 1, nspins
             CALL cp_fm_get_info(matrix=evects(ispin, 1), matrix_struct=matrix_struct)
@@ -529,13 +533,9 @@ CONTAINS
       END IF
 
       ! clean up
-      DO istate = 1, SIZE(evects, 2)
-         DO ispin = 1, nspins
-            CALL cp_fm_release(evects(ispin, istate))
-            CALL cp_fm_release(S_evects(ispin, istate))
-         END DO
-      END DO
-      DEALLOCATE (evects, S_evects, evals, ostrength)
+      CALL cp_fm_release(evects)
+      CALL cp_fm_release(S_evects)
+      DEALLOCATE (evals, ostrength)
 
       IF (tddfpt_control%kernel == tddfpt_kernel_full) THEN
          IF (do_admm) CALL release_kernel_env(kernel_env%admm_kernel)
@@ -556,14 +556,7 @@ CONTAINS
       CALL tddfpt_release_work_matrices(work_matrices, sub_env)
       CALL tddfpt_sub_env_release(sub_env)
 
-      IF (ALLOCATED(dipole_op_mos_occ)) THEN
-         DO ispin = nspins, 1, -1
-            DO istate = SIZE(dipole_op_mos_occ, 1), 1, -1
-               CALL cp_fm_release(dipole_op_mos_occ(istate, ispin))
-            END DO
-         END DO
-         DEALLOCATE (dipole_op_mos_occ)
-      END IF
+      CALL cp_fm_release(dipole_op_mos_occ)
 
       DO ispin = nspins, 1, -1
          CALL tddfpt_release_ground_state_mos(gs_mos(ispin))
@@ -715,12 +708,12 @@ CONTAINS
                              "the one used for the ground-state calculation. A ground-state 'admm_env' cannot be reused.")
             END IF
             ! SET HFX_KERNEL and/or XC_KERNEL
-            IF (exhfxk) THEN
+            IF (exk) THEN
                do_exck = .TRUE.
             ELSE
                do_exck = .FALSE.
             END IF
-            IF (exk) THEN
+            IF (exhfxk) THEN
                do_hfxlr = .TRUE.
             ELSE
                do_hfxlr = .FALSE.
@@ -866,8 +859,8 @@ CONTAINS
       REAL(KIND=dp), DIMENSION(:, :, :), POINTER         :: charges
       TYPE(cp_fm_type), ALLOCATABLE, DIMENSION(:)        :: psi0
       TYPE(cp_fm_type), POINTER                          :: mo_coeff
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: matrix_p1
+      TYPE(mp_para_env_type), POINTER                    :: para_env
 
       CALL timeset(routineN, handle)
 

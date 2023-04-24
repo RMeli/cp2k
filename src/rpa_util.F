@@ -34,9 +34,6 @@ MODULE rpa_util
    USE cp_fm_types,                     ONLY: &
         cp_fm_copy_general, cp_fm_create, cp_fm_get_info, cp_fm_release, cp_fm_set_all, &
         cp_fm_set_element, cp_fm_to_fm, cp_fm_to_fm_submat_general, cp_fm_type
-   USE cp_para_env,                     ONLY: cp_para_env_release,&
-                                              cp_para_env_split
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE dbcsr_api,                       ONLY: &
         dbcsr_create, dbcsr_deallocate_matrix, dbcsr_filter, dbcsr_get_info, dbcsr_multiply, &
         dbcsr_p_type, dbcsr_release, dbcsr_set, dbcsr_type
@@ -55,7 +52,8 @@ MODULE rpa_util
                                               kpoint_release,&
                                               kpoint_type
    USE mathconstants,                   ONLY: z_zero
-   USE message_passing,                 ONLY: mp_sum
+   USE message_passing,                 ONLY: mp_para_env_release,&
+                                              mp_para_env_type
    USE mp2_laplace,                     ONLY: calc_fm_mat_S_laplace
    USE parallel_gemm_api,               ONLY: parallel_gemm
    USE qs_environment_types,            ONLY: get_qs_env,&
@@ -148,7 +146,7 @@ CONTAINS
                             mat_work, mo_coeff, fm_scaled_dm_occ_tau, fm_scaled_dm_virt_tau, homo, nmo)
 
       TYPE(qs_environment_type), POINTER                 :: qs_env
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       INTEGER, INTENT(IN)                                :: dimen_RI, dimen_RI_red, &
                                                             num_integ_points, nspins
       TYPE(cp_fm_type), INTENT(IN)                       :: fm_mat_Q
@@ -487,7 +485,7 @@ CONTAINS
                             dimen_RI, dimen_RI_red, first_ikp_local, ikp_local, fm_struct_sub_kp, allocate_mat_L)
       TYPE(cp_fm_type), ALLOCATABLE, DIMENSION(:, :)     :: fm_mat_L, fm_matrix_Minv_L_kpoints
       TYPE(cp_fm_struct_type), POINTER                   :: fm_struct_template
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_p_type), INTENT(OUT)                    :: mat_L
       TYPE(dbcsr_type), INTENT(IN)                       :: mat_template
       INTEGER, INTENT(IN)                                :: dimen_RI, dimen_RI_red, first_ikp_local
@@ -576,12 +574,7 @@ CONTAINS
       END DO
 
       ! Release old matrix
-      DO ikp = 1, SIZE(fm_matrix_Minv_L_kpoints, 1)
-      DO j_size = 1, SIZE(fm_matrix_Minv_L_kpoints, 2)
-         CALL cp_fm_release(fm_matrix_Minv_L_kpoints(ikp, j_size))
-      END DO
-      END DO
-      DEALLOCATE (fm_matrix_Minv_L_kpoints)
+      CALL cp_fm_release(fm_matrix_Minv_L_kpoints)
       ! Release buffer
       CALL cp_fm_release(fm_mat_L_transposed)
 
@@ -870,7 +863,7 @@ CONTAINS
       ! copy/redistribute fm_mat_Q_gemm to fm_mat_Q
       CALL cp_fm_set_all(matrix=fm_mat_Q, alpha=0.0_dp)
       CALL cp_fm_to_fm_submat_general(fm_mat_Q_gemm, fm_mat_Q, dimen_RI, dimen_RI, 1, 1, 1, 1, &
-                                      fm_mat_Q_gemm%matrix_struct%context%group)
+                                      fm_mat_Q_gemm%matrix_struct%context)
 
       CALL timestop(handle)
 
@@ -888,7 +881,7 @@ CONTAINS
       INTEGER, INTENT(IN)                                :: dimen_RI
       REAL(KIND=dp), DIMENSION(dimen_RI), INTENT(OUT)    :: trace_Qomega
       TYPE(cp_fm_type), INTENT(IN)                       :: fm_mat_Q
-      TYPE(cp_para_env_type), INTENT(IN)                 :: para_env_RPA
+      TYPE(mp_para_env_type), INTENT(IN)                 :: para_env_RPA
 
       CHARACTER(LEN=*), PARAMETER :: routineN = 'Q_trace_and_add_unit_matrix'
 
@@ -918,7 +911,7 @@ CONTAINS
             END IF
          END DO
       END DO
-      CALL mp_sum(trace_Qomega, para_env_RPA%group)
+      CALL para_env_RPA%sum(trace_Qomega)
 
       CALL timestop(handle)
 
@@ -938,7 +931,7 @@ CONTAINS
       INTEGER, INTENT(IN)                                :: dimen_RI
       REAL(KIND=dp), DIMENSION(dimen_RI), INTENT(IN)     :: trace_Qomega
       TYPE(cp_fm_type), INTENT(IN)                       :: fm_mat_Q
-      TYPE(cp_para_env_type), INTENT(IN)                 :: para_env_RPA
+      TYPE(mp_para_env_type), INTENT(IN)                 :: para_env_RPA
       REAL(KIND=dp), INTENT(INOUT)                       :: Erpa
       REAL(KIND=dp), INTENT(IN)                          :: wjquad
 
@@ -985,7 +978,7 @@ CONTAINS
             END IF
          END DO
       END DO
-      CALL mp_sum(Q_log, para_env_RPA%group)
+      CALL para_env_RPA%sum(Q_log)
 
       ! the following frequency integration is Eq. (27) in M. Del Ben et al., JCTC 9, 2654 (2013)
       ! (https://doi.org/10.1021/ct4002202)
@@ -1013,7 +1006,7 @@ CONTAINS
    SUBROUTINE get_sub_para_kp(fm_struct_sub_kp, para_env, dimen_RI, &
                               ikp_local, first_ikp_local)
       TYPE(cp_fm_struct_type), POINTER                   :: fm_struct_sub_kp
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       INTEGER, INTENT(IN)                                :: dimen_RI
       INTEGER, INTENT(OUT)                               :: ikp_local, first_ikp_local
 
@@ -1021,7 +1014,7 @@ CONTAINS
 
       INTEGER                                            :: color_sub_kp, handle, num_proc_per_kp
       TYPE(cp_blacs_env_type), POINTER                   :: blacs_env_sub_kp
-      TYPE(cp_para_env_type), POINTER                    :: para_env_sub_kp
+      TYPE(mp_para_env_type), POINTER                    :: para_env_sub_kp
 
       CALL timeset(routineN, handle)
 
@@ -1037,7 +1030,8 @@ CONTAINS
       ! END IF
 
       color_sub_kp = para_env%mepos/num_proc_per_kp
-      CALL cp_para_env_split(para_env_sub_kp, para_env, color_sub_kp)
+      ALLOCATE (para_env_sub_kp)
+      CALL para_env_sub_kp%from_split(para_env, color_sub_kp)
 
       ! grid_2d(1) = 1
       ! grid_2d(2) = para_env_sub_kp%num_pe
@@ -1067,7 +1061,7 @@ CONTAINS
       !    END DO
       ! END IF
 
-      CALL cp_para_env_release(para_env_sub_kp)
+      CALL mp_para_env_release(para_env_sub_kp)
 
       CALL timestop(handle)
 
@@ -1174,29 +1168,12 @@ CONTAINS
       CALL cp_fm_release(fm_mo_coeff_occ_scaled)
       CALL cp_fm_release(fm_mo_coeff_virt_scaled)
 
-      IF (ALLOCATED(fm_mat_Minv_L_kpoints)) THEN
-         DO i_size = 1, SIZE(fm_mat_Minv_L_kpoints, 1)
-            DO j_size = 1, SIZE(fm_mat_Minv_L_kpoints, 2)
-               CALL cp_fm_release(fm_mat_Minv_L_kpoints(i_size, j_size))
-            END DO
-         END DO
-         DEALLOCATE (fm_mat_Minv_L_kpoints)
-      END IF
-
-      IF (ALLOCATED(fm_mat_L_kpoints)) THEN
-         DO i_size = 1, SIZE(fm_mat_L_kpoints, 1)
-            DO j_size = 1, SIZE(fm_mat_L_kpoints, 2)
-               CALL cp_fm_release(fm_mat_L_kpoints(i_size, j_size))
-            END DO
-         END DO
-         DEALLOCATE (fm_mat_L_kpoints)
-      END IF
+      CALL cp_fm_release(fm_mat_Minv_L_kpoints)
+      CALL cp_fm_release(fm_mat_L_kpoints)
 
       IF (do_kpoints_cubic_RPA .OR. do_kpoints_from_Gamma) THEN
-         CALL cp_fm_release(fm_matrix_Minv_Vtrunc_Minv(1, 1))
-         DEALLOCATE (fm_matrix_Minv_Vtrunc_Minv)
-         CALL cp_fm_release(fm_matrix_Minv(1, 1))
-         DEALLOCATE (fm_matrix_Minv)
+         CALL cp_fm_release(fm_matrix_Minv_Vtrunc_Minv)
+         CALL cp_fm_release(fm_matrix_Minv)
       END IF
 
       CALL cp_fm_release(fm_mat_work)

@@ -34,7 +34,6 @@ MODULE hfx_ri
                                               cp_fm_struct_type
    USE cp_fm_types,                     ONLY: cp_fm_create,&
                                               cp_fm_release,&
-                                              cp_fm_to_fm,&
                                               cp_fm_type,&
                                               cp_fm_write_unformatted
    USE cp_log_handling,                 ONLY: cp_get_default_logger,&
@@ -43,7 +42,6 @@ MODULE hfx_ri
                                               cp_print_key_finished_output,&
                                               cp_print_key_should_output,&
                                               cp_print_key_unit_nr
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE dbcsr_api,                       ONLY: &
         dbcsr_add, dbcsr_add_on_diag, dbcsr_complete_redistribute, dbcsr_copy, dbcsr_create, &
         dbcsr_desymmetrize, dbcsr_distribution_get, dbcsr_distribution_release, &
@@ -80,11 +78,9 @@ MODULE hfx_ri
                                               dp,&
                                               int_8
    USE machine,                         ONLY: m_walltime
-   USE message_passing,                 ONLY: mp_cart_create,&
+   USE message_passing,                 ONLY: mp_cart_type,&
                                               mp_comm_type,&
-                                              mp_environ,&
-                                              mp_sum,&
-                                              mp_sync
+                                              mp_para_env_type
    USE particle_methods,                ONLY: get_particle_set
    USE particle_types,                  ONLY: particle_type
    USE qs_environment_types,            ONLY: get_qs_env,&
@@ -94,12 +90,6 @@ MODULE hfx_ri
    USE qs_interactions,                 ONLY: init_interaction_radii_orb_basis
    USE qs_kind_types,                   ONLY: qs_kind_type
    USE qs_ks_types,                     ONLY: qs_ks_env_type
-   USE qs_loc_methods,                  ONLY: qs_loc_driver
-   USE qs_loc_types,                    ONLY: get_qs_loc_env,&
-                                              qs_loc_env_create,&
-                                              qs_loc_env_release
-   USE qs_loc_utils,                    ONLY: qs_loc_control_init,&
-                                              qs_loc_init
    USE qs_mo_types,                     ONLY: get_mo_set,&
                                               mo_set_type
    USE qs_neighbor_list_types,          ONLY: neighbor_list_set_p_type,&
@@ -144,8 +134,8 @@ CONTAINS
 
       INTEGER                                            :: handle, n_mem, new_flavor
       TYPE(atomic_kind_type), DIMENSION(:), POINTER      :: atomic_kind_set
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dft_control_type), POINTER                    :: dft_control
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
       TYPE(qs_kind_type), DIMENSION(:), POINTER          :: qs_kind_set
 
@@ -213,11 +203,11 @@ CONTAINS
                                                             unit_nr, unit_nr_dbcsr
       REAL(KIND=dp)                                      :: threshold
       TYPE(cp_blacs_env_type), POINTER                   :: blacs_env
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_type), DIMENSION(1) :: dbcsr_work_1, dbcsr_work_2, t_2c_int_mat, t_2c_op_pot, &
          t_2c_op_pot_sqrt, t_2c_op_pot_sqrt_inv, t_2c_op_RI, t_2c_op_RI_inv
       TYPE(dbt_type), DIMENSION(1)                       :: t_2c_int, t_2c_work
       TYPE(dbt_type), DIMENSION(1, 1)                    :: t_3c_int
+      TYPE(mp_para_env_type), POINTER                    :: para_env
 
       CALL timeset(routineN, handle)
 
@@ -470,7 +460,7 @@ CONTAINS
       TYPE(gto_basis_set_p_type), ALLOCATABLE, &
          DIMENSION(:), TARGET                            :: basis_set_AO, basis_set_RI
       TYPE(gto_basis_set_type), POINTER                  :: orb_basis, ri_basis
-      TYPE(mp_comm_type)                                 :: mp_comm_t3c
+      TYPE(mp_cart_type)                                 :: mp_comm_t3c
       TYPE(neighbor_list_3c_type)                        :: nl_3c
       TYPE(neighbor_list_set_p_type), DIMENSION(:), &
          POINTER                                         :: nl_2c_pot, nl_2c_RI
@@ -515,7 +505,7 @@ CONTAINS
 
       CALL get_qs_env(qs_env, nkind=nkind, particle_set=particle_set, atomic_kind_set=atomic_kind_set)
       CALL dbt_mp_environ_pgrid(ri_data%pgrid, pdims, pcoord)
-      CALL mp_cart_create(ri_data%pgrid%mp_comm_2d, 3, pdims, pcoord, mp_comm_t3c)
+      CALL mp_comm_t3c%create(ri_data%pgrid%mp_comm_2d, 3, pdims)
       CALL distribution_3d_create(dist_3d, dist_RI, dist_AO_1, dist_AO_2, &
                                   nkind, particle_set, mp_comm_t3c, own_comm=.TRUE.)
       DEALLOCATE (dist_RI, dist_AO_1, dist_AO_2)
@@ -668,12 +658,12 @@ CONTAINS
       REAL(KIND=dp)                                      :: compression_factor, memory_3c, occ, &
                                                             threshold
       TYPE(cp_blacs_env_type), POINTER                   :: blacs_env
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_type), DIMENSION(1)                     :: t_2c_int_mat, t_2c_op_pot, t_2c_op_RI, &
                                                             t_2c_tmp, t_2c_tmp_2
       TYPE(dbt_type)                                     :: t_3c_2
       TYPE(dbt_type), DIMENSION(1)                       :: t_2c_int, t_2c_work
       TYPE(dbt_type), DIMENSION(1, 1)                    :: t_3c_int_1
+      TYPE(mp_para_env_type), POINTER                    :: para_env
 
       CALL timeset(routineN, handle)
 
@@ -813,7 +803,7 @@ CONTAINS
       CALL dbt_batched_contract_finalize(t_3c_2)
       CALL dbt_batched_contract_finalize(ri_data%t_3c_int_ctr_3(1, 1))
 
-      CALL mp_sum(memory_3c, para_env%group)
+      CALL para_env%sum(memory_3c)
       compression_factor = REAL(nze_O, dp)*1.0E-06*8.0_dp/memory_3c
 
       IF (unit_nr > 0) THEN
@@ -937,13 +927,11 @@ CONTAINS
       LOGICAL                                            :: is_antisymmetric
       REAL(dp)                                           :: etmp, fac
       REAL(KIND=dp), DIMENSION(:), POINTER               :: mo_eigenvalues
-      TYPE(cp_fm_type), ALLOCATABLE, DIMENSION(:)        :: homo_localized
-      TYPE(cp_fm_type), DIMENSION(:), POINTER            :: moloc_coeff
       TYPE(cp_fm_type), POINTER                          :: mo_coeff
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_p_type), DIMENSION(:, :), POINTER       :: my_ks_matrix, my_rho_ao
       TYPE(dbcsr_type), DIMENSION(2)                     :: mo_coeff_b
       TYPE(dbcsr_type), POINTER                          :: mo_coeff_b_tmp
+      TYPE(mp_para_env_type), POINTER                    :: para_env
 
       CALL timeset(routineN, handle)
 
@@ -991,58 +979,20 @@ CONTAINS
          CPASSERT(PRESENT(mos))
          CALL timeset(routineN//"_MO", handle2)
 
-         IF (ri_data%do_loc) THEN
-            ALLOCATE (homo_localized(nspins))
-         END IF
          DO ispin = 1, nspins
             NULLIFY (mo_coeff_b_tmp)
             CPASSERT(mos(ispin)%uniform_occupation)
             CALL get_mo_set(mo_set=mos(ispin), mo_coeff=mo_coeff, eigenvalues=mo_eigenvalues, mo_coeff_b=mo_coeff_b_tmp)
 
-            IF (.NOT. ri_data%do_loc) THEN
-               IF (.NOT. mos(ispin)%use_mo_coeff_b) CALL copy_fm_to_dbcsr(mo_coeff, mo_coeff_b_tmp)
-               CALL dbcsr_copy(mo_coeff_b(ispin), mo_coeff_b_tmp)
-            ELSE
-               IF (mos(ispin)%use_mo_coeff_b) CALL copy_dbcsr_to_fm(mo_coeff_b_tmp, mo_coeff)
-               CALL dbcsr_create(mo_coeff_b(ispin), template=mo_coeff_b_tmp)
-            END IF
-
-            IF (ri_data%do_loc) THEN
-               CALL cp_fm_create(homo_localized(ispin), mo_coeff%matrix_struct)
-               CALL cp_fm_to_fm(mo_coeff, homo_localized(ispin))
-            END IF
+            IF (.NOT. mos(ispin)%use_mo_coeff_b) CALL copy_fm_to_dbcsr(mo_coeff, mo_coeff_b_tmp)
+            CALL dbcsr_copy(mo_coeff_b(ispin), mo_coeff_b_tmp)
          END DO
 
-         IF (ri_data%do_loc) THEN
-            ALLOCATE (ri_data%qs_loc_env)
-            CALL qs_loc_env_create(ri_data%qs_loc_env)
-            CALL qs_loc_control_init(ri_data%qs_loc_env, ri_data%loc_subsection, do_homo=.TRUE.)
-            CALL qs_loc_init(qs_env, ri_data%qs_loc_env, ri_data%loc_subsection, homo_localized)
-            DO ispin = 1, nspins
-               CALL qs_loc_driver(qs_env, ri_data%qs_loc_env, ri_data%print_loc_subsection, ispin, &
-                                  ext_mo_coeff=homo_localized(ispin))
-            END DO
-            CALL get_qs_loc_env(qs_loc_env=ri_data%qs_loc_env, moloc_coeff=moloc_coeff)
-
-            DO ispin = 1, nspins
-               CALL cp_fm_release(homo_localized(ispin))
-            END DO
-
-            DEALLOCATE (homo_localized)
-         END IF
-
          DO ispin = 1, nspins
-            IF (ri_data%do_loc) THEN
-               CALL copy_fm_to_dbcsr(moloc_coeff(ispin), mo_coeff_b(ispin))
-            END IF
             CALL dbcsr_scale(mo_coeff_b(ispin), SQRT(mos(ispin)%maxocc))
             homo(ispin) = mos(ispin)%homo
          END DO
 
-         IF (ri_data%do_loc) THEN
-            CALL qs_loc_env_release(ri_data%qs_loc_env)
-            DEALLOCATE (ri_data%qs_loc_env)
-         END IF
          CALL timestop(handle2)
 
          CALL hfx_ri_update_ks_mo(qs_env, ri_data, my_ks_matrix, mo_coeff_b, homo, &
@@ -1053,7 +1003,7 @@ CONTAINS
          CALL get_qs_env(qs_env, para_env=para_env)
          DO ispin = 1, SIZE(my_rho_ao, 1)
             nblks = dbcsr_get_num_blocks(my_rho_ao(ispin, 1)%matrix)
-            CALL mp_sum(nblks, para_env%group)
+            CALL para_env%sum(nblks)
             IF (nblks == 0) THEN
                CPABORT("received empty density matrix")
             END IF
@@ -1128,8 +1078,7 @@ CONTAINS
 
       INTEGER                                            :: bsize, bsum, comm_2d_handle, handle, &
                                                             handle2, i_mem, iblock, iproc, ispin, &
-                                                            n_mem, n_mos, nblock, nproc, &
-                                                            unit_nr_dbcsr
+                                                            n_mem, n_mos, nblock, unit_nr_dbcsr
       INTEGER(int_8)                                     :: nblks, nflop
       INTEGER, ALLOCATABLE, DIMENSION(:) :: batch_ranges_1, batch_ranges_2, dist1, dist2, dist3, &
          mem_end, mem_end_block_1, mem_end_block_2, mem_size, mem_start, mem_start_block_1, &
@@ -1139,13 +1088,13 @@ CONTAINS
       INTEGER, DIMENSION(3)                              :: pdims
       LOGICAL                                            :: do_initialize
       REAL(dp)                                           :: t1, t2
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_distribution_type)                      :: ks_dist
       TYPE(dbt_pgrid_type)                               :: pgrid, pgrid_2d
       TYPE(dbt_type)                                     :: ks_t, ks_t_mat, mo_coeff_t, &
                                                             mo_coeff_t_split
       TYPE(dbt_type), DIMENSION(1, 1)                    :: t_3c_int_mo_1, t_3c_int_mo_2
       TYPE(mp_comm_type)                                 :: comm_2d
+      TYPE(mp_para_env_type), POINTER                    :: para_env
 
       CALL timeset(routineN, handle)
 
@@ -1197,7 +1146,7 @@ CONTAINS
 
       DEALLOCATE (dist1, dist2)
 
-      CALL mp_sync(para_env%group)
+      CALL para_env%sync()
       t1 = m_walltime()
 
       DO ispin = 1, nspins
@@ -1247,7 +1196,7 @@ CONTAINS
          batch_ranges_2(:ri_data%n_mem) = mem_start_block_2(:)
          batch_ranges_2(ri_data%n_mem + 1) = mem_end_block_2(ri_data%n_mem) + 1
 
-         CALL mp_environ(nproc, iproc, para_env%group)
+         iproc = para_env%mepos
 
          CALL create_3c_tensor(t_3c_int_mo_1(1, 1), dist1, dist2, dist3, ri_data%pgrid_1, &
                                ri_data%bsizes_AO_split, ri_data%bsizes_RI_split, mo_bsizes_1, &
@@ -1273,7 +1222,7 @@ CONTAINS
          IF (do_initialize) THEN
             pdims(:) = 0
 
-            CALL dbt_pgrid_create(para_env%group, pdims, pgrid, &
+            CALL dbt_pgrid_create(para_env, pdims, pgrid, &
                                   tensor_dims=[SIZE(ri_data%bsizes_RI_fit), &
                                                (homo(ispin) - 1)/ri_data%n_mem + 1, &
                                                SIZE(ri_data%bsizes_AO_fit)])
@@ -1436,7 +1385,7 @@ CONTAINS
       CALL dbt_pgrid_destroy(pgrid_2d)
       CALL dbt_destroy(ks_t)
 
-      CALL mp_sync(para_env%group)
+      CALL para_env%sync()
       t2 = m_walltime()
 
       ri_data%dbcsr_time = ri_data%dbcsr_time + t2 - t1
@@ -1482,9 +1431,9 @@ CONTAINS
       REAL(dp)                                           :: memory_3c, occ, occ_3c, occ_3c_1, &
                                                             occ_3c_2, occ_ks, occ_rho, t1, t2, &
                                                             unused
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbt_type)                                     :: ks_t, ks_tmp, rho_ao_t, rho_ao_tmp, &
                                                             t_3c_1, t_3c_3, tensor_old
+      TYPE(mp_para_env_type), POINTER                    :: para_env
 
       IF (.NOT. fac > EPSILON(0.0_dp)) RETURN
 
@@ -1528,7 +1477,7 @@ CONTAINS
       CALL dbt_create(ri_data%t_3c_int_ctr_2(1, 1), t_3c_1)
       CALL dbt_create(ri_data%t_3c_int_ctr_1(1, 1), t_3c_3)
 
-      CALL mp_sync(para_env%group)
+      CALL para_env%sync()
       t1 = m_walltime()
 
       flops_ks_max = 0; flops_p_max = 0
@@ -1674,7 +1623,7 @@ CONTAINS
 
       END DO
 
-      CALL mp_sync(para_env%group)
+      CALL para_env%sync()
       t2 = m_walltime()
 
       ri_data%dbcsr_time = ri_data%dbcsr_time + t2 - t1
@@ -1728,7 +1677,6 @@ CONTAINS
       TYPE(atomic_kind_type), DIMENSION(:), POINTER      :: atomic_kind_set
       TYPE(block_ind_type), ALLOCATABLE, DIMENSION(:, :) :: t_3c_der_AO_ind, t_3c_der_RI_ind
       TYPE(cell_type), POINTER                           :: cell
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: matrix_s
       TYPE(dbt_pgrid_type)                               :: pgrid_1, pgrid_2
       TYPE(dbt_type) :: t_2c_RI, t_2c_RI_inv, t_2c_RI_met, t_2c_RI_PQ, t_2c_tmp, t_3c_0, t_3c_1, &
@@ -1739,6 +1687,7 @@ CONTAINS
          t_3c_der_AO, t_3c_der_AO_ctr_1, t_3c_der_RI, t_3c_der_RI_ctr_1, t_3c_der_RI_ctr_2
       TYPE(hfx_compression_type), ALLOCATABLE, &
          DIMENSION(:, :)                                 :: t_3c_der_AO_comp, t_3c_der_RI_comp
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
       TYPE(qs_force_type), DIMENSION(:), POINTER         :: force
       TYPE(virial_type), POINTER                         :: virial
@@ -1763,13 +1712,13 @@ CONTAINS
                       para_env=para_env)
 
       pdims(:) = 0
-      CALL dbt_pgrid_create(para_env%group, pdims, pgrid_1, tensor_dims=[SIZE(ri_data%bsizes_AO_split), &
-                                                                         SIZE(ri_data%bsizes_RI_split), &
-                                                                         SIZE(ri_data%bsizes_AO_split)])
+      CALL dbt_pgrid_create(para_env, pdims, pgrid_1, tensor_dims=[SIZE(ri_data%bsizes_AO_split), &
+                                                                   SIZE(ri_data%bsizes_RI_split), &
+                                                                   SIZE(ri_data%bsizes_AO_split)])
       pdims(:) = 0
-      CALL dbt_pgrid_create(para_env%group, pdims, pgrid_2, tensor_dims=[SIZE(ri_data%bsizes_RI_split), &
-                                                                         SIZE(ri_data%bsizes_AO_split), &
-                                                                         SIZE(ri_data%bsizes_AO_split)])
+      CALL dbt_pgrid_create(para_env, pdims, pgrid_2, tensor_dims=[SIZE(ri_data%bsizes_RI_split), &
+                                                                   SIZE(ri_data%bsizes_AO_split), &
+                                                                   SIZE(ri_data%bsizes_AO_split)])
 
       CALL create_3c_tensor(t_3c_ao_ri_ao, dist1, dist2, dist3, pgrid_1, &
                             ri_data%bsizes_AO_split, ri_data%bsizes_RI_split, ri_data%bsizes_AO_split, &
@@ -1827,7 +1776,6 @@ CONTAINS
       ALLOCATE (idx_to_at_AO(SIZE(ri_data%bsizes_AO_split)))
       CALL get_idx_to_atom(idx_to_at_AO, ri_data%bsizes_AO_split, ri_data%bsizes_AO)
 
-      ALLOCATE (atom_of_kind(natom), kind_of(natom))
       CALL get_atomic_kind_set(atomic_kind_set, kind_of=kind_of, atom_of_kind=atom_of_kind)
 
       ! 2-center RI tensors
@@ -1963,7 +1911,7 @@ CONTAINS
             CALL dbt_batched_contract_init(t_3c_der_RI(i_xyz), batch_range_2=batch_ranges_RI)
          END DO
 
-         CALL mp_sync(para_env%group)
+         CALL para_env%sync()
          t1 = m_walltime()
 
          ! 2) Loop over batches
@@ -2376,7 +2324,7 @@ CONTAINS
       END DO
       CALL dbt_copy(ri_data%t_3c_int_ctr_2(1, 1), ri_data%t_3c_int_ctr_1(1, 1))
 
-      CALL mp_sync(para_env%group)
+      CALL para_env%sync()
       t2 = m_walltime()
 
       ri_data%dbcsr_time = ri_data%dbcsr_time + t2 - t1
@@ -2425,7 +2373,6 @@ CONTAINS
       TYPE(atomic_kind_type), DIMENSION(:), POINTER      :: atomic_kind_set
       TYPE(block_ind_type), ALLOCATABLE, DIMENSION(:, :) :: t_3c_der_AO_ind, t_3c_der_RI_ind
       TYPE(cell_type), POINTER                           :: cell
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_type)                                   :: dbcsr_tmp
       TYPE(dbt_type) :: rho_ao_1, rho_ao_2, t_2c_RI, t_2c_RI_tmp, t_2c_tmp, t_3c_1, t_3c_2, &
          t_3c_3, t_3c_4, t_3c_5, t_3c_ao_ri_ao, t_3c_help_1, t_3c_help_2, t_3c_int, t_3c_int_2, &
@@ -2434,6 +2381,7 @@ CONTAINS
                                                             t_3c_der_AO, t_3c_der_RI
       TYPE(hfx_compression_type), ALLOCATABLE, &
          DIMENSION(:, :)                                 :: t_3c_der_AO_comp, t_3c_der_RI_comp
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
       TYPE(qs_force_type), DIMENSION(:), POINTER         :: force
       TYPE(virial_type), POINTER                         :: virial
@@ -2514,7 +2462,6 @@ CONTAINS
       ALLOCATE (idx_to_at_AO(SIZE(ri_data%bsizes_AO_split)))
       CALL get_idx_to_atom(idx_to_at_AO, ri_data%bsizes_AO_split, ri_data%bsizes_AO)
 
-      ALLOCATE (atom_of_kind(natom), kind_of(natom))
       CALL get_atomic_kind_set(atomic_kind_set, kind_of=kind_of, atom_of_kind=atom_of_kind)
 
       ! Go over batches of the 2 AO indices to save memory
@@ -2563,7 +2510,7 @@ CONTAINS
 
       CALL dbt_create(t_3c_ri_ao_ao, t_3c_int_2)
 
-      CALL mp_sync(para_env%group)
+      CALL para_env%sync()
       t1 = m_walltime()
 
       !Pre-calculate the necessary 2-center quantities
@@ -2846,7 +2793,7 @@ CONTAINS
       CALL dbt_batched_contract_finalize(t_3c_5)
       CALL dbt_batched_contract_finalize(t_3c_sparse)
 
-      CALL mp_sync(para_env%group)
+      CALL para_env%sync()
       t2 = m_walltime()
 
       CALL dbt_copy(t_3c_int, ri_data%t_3c_int_ctr_2(1, 1), move_data=.TRUE.)
@@ -2920,8 +2867,6 @@ CONTAINS
       INTEGER                                            :: handle, ispin
       INTEGER, DIMENSION(2)                              :: homo
       REAL(KIND=dp), DIMENSION(:), POINTER               :: mo_eigenvalues
-      TYPE(cp_fm_type), ALLOCATABLE, DIMENSION(:)        :: homo_localized
-      TYPE(cp_fm_type), DIMENSION(:), POINTER            :: moloc_coeff
       TYPE(cp_fm_type), POINTER                          :: mo_coeff
       TYPE(dbcsr_type), DIMENSION(2)                     :: mo_coeff_b
       TYPE(dbcsr_type), POINTER                          :: mo_coeff_b_tmp
@@ -2931,59 +2876,19 @@ CONTAINS
       SELECT CASE (ri_data%flavor)
       CASE (ri_mo)
 
-         IF (ri_data%do_loc) THEN
-            ALLOCATE (homo_localized(nspins))
-         END IF
          DO ispin = 1, nspins
             NULLIFY (mo_coeff_b_tmp)
             CPASSERT(mos(ispin)%uniform_occupation)
             CALL get_mo_set(mo_set=mos(ispin), mo_coeff=mo_coeff, eigenvalues=mo_eigenvalues, mo_coeff_b=mo_coeff_b_tmp)
 
-            IF (.NOT. ri_data%do_loc) THEN
-               IF (.NOT. mos(ispin)%use_mo_coeff_b) CALL copy_fm_to_dbcsr(mo_coeff, mo_coeff_b_tmp)
-               CALL dbcsr_copy(mo_coeff_b(ispin), mo_coeff_b_tmp)
-            ELSE
-               IF (mos(ispin)%use_mo_coeff_b) CALL copy_dbcsr_to_fm(mo_coeff_b_tmp, mo_coeff)
-               CALL dbcsr_create(mo_coeff_b(ispin), template=mo_coeff_b_tmp)
-            END IF
-
-            IF (ri_data%do_loc) THEN
-               CALL cp_fm_create(homo_localized(ispin), mo_coeff%matrix_struct)
-               CALL cp_fm_to_fm(mo_coeff, homo_localized(ispin))
-            END IF
+            IF (.NOT. mos(ispin)%use_mo_coeff_b) CALL copy_fm_to_dbcsr(mo_coeff, mo_coeff_b_tmp)
+            CALL dbcsr_copy(mo_coeff_b(ispin), mo_coeff_b_tmp)
          END DO
 
-         IF (ri_data%do_loc) THEN
-            ALLOCATE (ri_data%qs_loc_env)
-            CALL qs_loc_env_create(ri_data%qs_loc_env)
-            CALL qs_loc_control_init(ri_data%qs_loc_env, ri_data%loc_subsection, do_homo=.TRUE.)
-            CALL qs_loc_init(qs_env, ri_data%qs_loc_env, ri_data%loc_subsection, homo_localized)
-            DO ispin = 1, nspins
-               CALL qs_loc_driver(qs_env, ri_data%qs_loc_env, ri_data%print_loc_subsection, ispin, &
-                                  ext_mo_coeff=homo_localized(ispin))
-            END DO
-            CALL get_qs_loc_env(qs_loc_env=ri_data%qs_loc_env, moloc_coeff=moloc_coeff)
-
-            DO ispin = 1, nspins
-               CALL cp_fm_release(homo_localized(ispin))
-            END DO
-
-            DEALLOCATE (homo_localized)
-
-         END IF
-
          DO ispin = 1, nspins
-            IF (ri_data%do_loc) THEN
-               CALL copy_fm_to_dbcsr(moloc_coeff(ispin), mo_coeff_b(ispin))
-            END IF
             CALL dbcsr_scale(mo_coeff_b(ispin), SQRT(mos(ispin)%maxocc))
             homo(ispin) = mos(ispin)%homo
          END DO
-
-         IF (ri_data%do_loc) THEN
-            CALL qs_loc_env_release(ri_data%qs_loc_env)
-            DEALLOCATE (ri_data%qs_loc_env)
-         END IF
 
          CALL hfx_ri_forces_mo(qs_env, ri_data, nspins, hf_fraction, mo_coeff_b, use_virial)
 
@@ -3035,7 +2940,6 @@ CONTAINS
       INTEGER, DIMENSION(3)                              :: pcoord, pdims
       INTEGER, DIMENSION(:), POINTER                     :: col_bsize, row_bsize
       REAL(dp)                                           :: compression_factor, memory, occ
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_distribution_type)                      :: dbcsr_dist
       TYPE(dbcsr_type), DIMENSION(1, 3)                  :: t_2c_der_metric_prv, t_2c_der_RI_prv
       TYPE(dbt_type)                                     :: t_2c_template, t_2c_tmp, t_3c_template
@@ -3046,7 +2950,8 @@ CONTAINS
       TYPE(gto_basis_set_p_type), ALLOCATABLE, &
          DIMENSION(:), TARGET                            :: basis_set_AO, basis_set_RI
       TYPE(gto_basis_set_type), POINTER                  :: orb_basis, ri_basis
-      TYPE(mp_comm_type)                                 :: mp_comm_t3c
+      TYPE(mp_cart_type)                                 :: mp_comm_t3c
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(neighbor_list_3c_type)                        :: nl_3c
       TYPE(neighbor_list_set_p_type), DIMENSION(:), &
          POINTER                                         :: nl_2c
@@ -3086,7 +2991,7 @@ CONTAINS
       CALL dbt_destroy(t_3c_template)
 
       CALL dbt_mp_environ_pgrid(ri_data%pgrid, pdims, pcoord)
-      CALL mp_cart_create(ri_data%pgrid%mp_comm_2d, 3, pdims, pcoord, mp_comm_t3c)
+      CALL mp_comm_t3c%create(ri_data%pgrid%mp_comm_2d, 3, pdims)
       CALL distribution_3d_create(dist_3d, dist_RI, dist_AO_1, dist_AO_2, &
                                   nkind, particle_set, mp_comm_t3c, own_comm=.TRUE.)
       DEALLOCATE (dist_RI, dist_AO_1, dist_AO_2)
@@ -3140,7 +3045,7 @@ CONTAINS
          CALL dbt_destroy(t_3c_der_AO_prv(1, 1, i_xyz))
       END DO
 
-      CALL mp_sum(memory, para_env%group)
+      CALL para_env%sum(memory)
       compression_factor = REAL(nze_tot, dp)*1.0E-06*8.0_dp/memory
       IF (ri_data%unit_nr > 0) THEN
          WRITE (UNIT=ri_data%unit_nr, FMT="((T3,A,T66,F11.2,A4))") &
@@ -3588,7 +3493,6 @@ CONTAINS
       TYPE(cp_fm_struct_type), POINTER                   :: fm_struct
       TYPE(cp_fm_type)                                   :: matrix_s_fm
       TYPE(cp_logger_type), POINTER                      :: logger
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_distribution_type)                      :: dbcsr_dist
       TYPE(dbcsr_p_type), DIMENSION(:, :), POINTER       :: rho_ao
       TYPE(dbcsr_type), DIMENSION(1)                     :: matrix_s
@@ -3597,6 +3501,7 @@ CONTAINS
       TYPE(gto_basis_set_p_type), ALLOCATABLE, &
          DIMENSION(:), TARGET                            :: basis_set_AO, basis_set_RI
       TYPE(gto_basis_set_type), POINTER                  :: orb_basis, ri_basis
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(neighbor_list_set_p_type), DIMENSION(:), &
          POINTER                                         :: nl_2c
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
@@ -3770,7 +3675,6 @@ CONTAINS
       REAL(dp), ALLOCATABLE, DIMENSION(:, :)             :: blk
       REAL(dp), ALLOCATABLE, DIMENSION(:, :, :)          :: blk_3d
       TYPE(cp_blacs_env_type), POINTER                   :: blacs_env
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_type)                                   :: ri_2c_inv
       TYPE(dbt_distribution_type)                        :: dist_2d, dist_3d
       TYPE(dbt_iterator_type)                            :: iter
@@ -3781,7 +3685,8 @@ CONTAINS
       TYPE(dbt_type), DIMENSION(1, 1)                    :: t_3c_int_batched
       TYPE(dft_control_type), POINTER                    :: dft_control
       TYPE(distribution_3d_type)                         :: dist_nl3c
-      TYPE(mp_comm_type)                                 :: mp_comm_t3c
+      TYPE(mp_cart_type)                                 :: mp_comm_t3c
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(neighbor_list_3c_type)                        :: nl_3c
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
       TYPE(qs_kind_type), DIMENSION(:), POINTER          :: qs_kind_set
@@ -3860,7 +3765,7 @@ CONTAINS
       pdims_3d(2) = pdims_2d(2)
       pdims_3d(3) = 1
 
-      CALL dbt_pgrid_create(para_env%group, pdims_3d, pgrid_3d)
+      CALL dbt_pgrid_create(para_env, pdims_3d, pgrid_3d)
       CALL dbt_distribution_new(dist_3d, pgrid_3d, dist1, dist2, dist3)
       CALL dbt_create(rho_ao_t_3d, "rho_ao_3d", dist_3d, [1, 2], [3], ri_data%bsizes_AO_split, &
                       ri_data%bsizes_AO_split, [1])
@@ -3940,7 +3845,7 @@ CONTAINS
       CALL dbt_default_distvec(SIZE(ri_data%bsizes_RI_split), pdims_2d(1), ri_data%bsizes_RI_split, dist1)
       CALL dbt_default_distvec(1, pdims_2d(2), [1], dist2)
 
-      CALL dbt_pgrid_create(para_env%group, pdims_2d, pgrid_2d)
+      CALL dbt_pgrid_create(para_env, pdims_2d, pgrid_2d)
       CALL dbt_distribution_new(dist_2d, pgrid_2d, dist1, dist2)
       CALL dbt_create(density_coeffs_t, "density_coeffs", dist_2d, [1], [2], ri_data%bsizes_RI_split, [1])
       CALL dbt_create(density_coeffs_t, density_tmp)
@@ -3954,7 +3859,7 @@ CONTAINS
                             name="(RI | AO AO)")
 
       CALL dbt_mp_environ_pgrid(ri_data%pgrid, pdims_3d, pcoord_3d)
-      CALL mp_cart_create(ri_data%pgrid%mp_comm_2d, 3, pdims_3d, pcoord_3d, mp_comm_t3c)
+      CALL mp_comm_t3c%create(ri_data%pgrid%mp_comm_2d, 3, pdims_3d)
       CALL distribution_3d_create(dist_nl3c, dist1, dist2, dist3, nkind, particle_set, &
                                   mp_comm_t3c, own_comm=.TRUE.)
       DEALLOCATE (dist1, dist2, dist3)
@@ -4033,7 +3938,7 @@ CONTAINS
       END DO
       CALL dbt_iterator_stop(iter)
 !$OMP END PARALLEL
-      CALL mp_sum(density_coeffs, para_env%group)
+      CALL para_env%sum(density_coeffs)
 
       CALL dbt_destroy(t2c_ri_ints)
       CALL dbt_destroy(t2c_ri_inv)

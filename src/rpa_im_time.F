@@ -25,7 +25,6 @@ MODULE rpa_im_time
                                               cp_fm_set_all,&
                                               cp_fm_to_fm,&
                                               cp_fm_type
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE dbcsr_api,                       ONLY: &
         dbcsr_add, dbcsr_clear, dbcsr_copy, dbcsr_create, dbcsr_distribution_get, &
         dbcsr_distribution_type, dbcsr_filter, dbcsr_get_info, dbcsr_init_p, dbcsr_p_type, &
@@ -46,7 +45,7 @@ MODULE rpa_im_time
                                               m_walltime
    USE mathconstants,                   ONLY: twopi
    USE message_passing,                 ONLY: mp_comm_type,&
-                                              mp_sync
+                                              mp_para_env_type
    USE mp2_types,                       ONLY: mp2_type
    USE parallel_gemm_api,               ONLY: parallel_gemm
    USE particle_types,                  ONLY: particle_type
@@ -164,7 +163,7 @@ CONTAINS
          INTENT(IN)                                      :: tau_tj
       INTEGER, INTENT(IN)                                :: cut_memory, unit_nr
       TYPE(mp2_type)                                     :: mp2_env
-      TYPE(cp_para_env_type), INTENT(IN)                 :: para_env
+      TYPE(mp_para_env_type), INTENT(IN)                 :: para_env
       TYPE(qs_environment_type), POINTER                 :: qs_env
       LOGICAL, INTENT(IN)                                :: do_kpoints_from_Gamma
       INTEGER, ALLOCATABLE, DIMENSION(:, :), INTENT(IN)  :: index_to_cell_3c
@@ -237,7 +236,7 @@ CONTAINS
 
       DO jquad = 1, num_integ_points
 
-         CALL mp_sync(para_env%group)
+         CALL para_env%sync()
          t1 = m_walltime()
 
          CALL compute_mat_dm_global(fm_scaled_dm_occ_tau, fm_scaled_dm_virt_tau, tau_tj, num_integ_points, nmo, &
@@ -292,7 +291,7 @@ CONTAINS
 
          CALL timeset(routineN//"_contract", handle2)
 
-         CALL mp_sync(para_env%group)
+         CALL para_env%sync()
          t1_flop = m_walltime()
 
          DO i = 1, SIZE(t_3c_O_occ, 1)
@@ -565,7 +564,7 @@ CONTAINS
          DEALLOCATE (t_dm_virt)
          DEALLOCATE (t_dm_occ)
 
-         CALL mp_sync(para_env%group)
+         CALL para_env%sync()
          t2 = m_walltime()
 
          dbcsr_time = dbcsr_time + t2 - t1_flop
@@ -685,7 +684,7 @@ CONTAINS
       TYPE(qs_environment_type), POINTER                 :: qs_env
       INTEGER, INTENT(OUT)                               :: num_cells_dm
       INTEGER, DIMENSION(:, :), POINTER                  :: index_to_cell_dm
-      TYPE(cp_para_env_type), INTENT(IN)                 :: para_env
+      TYPE(mp_para_env_type), INTENT(IN)                 :: para_env
 
       CHARACTER(LEN=*), PARAMETER :: routineN = 'compute_mat_dm_global'
       REAL(KIND=dp), PARAMETER                           :: stabilize_exp = 70.0_dp
@@ -719,11 +718,13 @@ CONTAINS
 
          CALL compute_periodic_dm(mat_dm_occ_global, qs_env, &
                                   ispin, num_integ_points, jquad, e_fermi, tau, &
-                                  remove_occ=.FALSE., remove_virt=.TRUE., first_jquad=1)
+                                  remove_occ=.FALSE., remove_virt=.TRUE., &
+                                  alloc_dm=(jquad == 1))
 
          CALL compute_periodic_dm(mat_dm_virt_global, qs_env, &
                                   ispin, num_integ_points, jquad, e_fermi, tau, &
-                                  remove_occ=.TRUE., remove_virt=.FALSE., first_jquad=1)
+                                  remove_occ=.TRUE., remove_virt=.FALSE., &
+                                  alloc_dm=(jquad == 1))
 
          num_cells_dm = 1
 
@@ -731,7 +732,7 @@ CONTAINS
 
          num_cells_dm = 1
 
-         CALL mp_sync(para_env%group)
+         CALL para_env%sync()
 
          ! get info of fm_mo_coeff_occ
          CALL cp_fm_get_info(matrix=fm_mo_coeff_occ, &
@@ -783,7 +784,7 @@ CONTAINS
             END DO
          END DO
 
-         CALL mp_sync(para_env%group)
+         CALL para_env%sync()
 
          size_dm_occ = nmo
          size_dm_virt = nmo
@@ -1126,16 +1127,15 @@ CONTAINS
 !> \param tau ...
 !> \param remove_occ ...
 !> \param remove_virt ...
-!> \param first_jquad ...
+!> \param alloc_dm ...
 ! **************************************************************************************************
    SUBROUTINE compute_periodic_dm(mat_dm_global, qs_env, ispin, num_integ_points, jquad, e_fermi, tau, &
-                                  remove_occ, remove_virt, first_jquad)
+                                  remove_occ, remove_virt, alloc_dm)
       TYPE(dbcsr_p_type), DIMENSION(:, :), POINTER       :: mat_dm_global
       TYPE(qs_environment_type), POINTER                 :: qs_env
       INTEGER, INTENT(IN)                                :: ispin, num_integ_points, jquad
       REAL(KIND=dp), INTENT(IN)                          :: e_fermi, tau
-      LOGICAL, INTENT(IN)                                :: remove_occ, remove_virt
-      INTEGER, INTENT(IN)                                :: first_jquad
+      LOGICAL, INTENT(IN)                                :: remove_occ, remove_virt, alloc_dm
 
       CHARACTER(LEN=*), PARAMETER :: routineN = 'compute_periodic_dm'
 
@@ -1161,13 +1161,13 @@ CONTAINS
       NULLIFY (mat_dm_global_work)
       CALL dbcsr_allocate_matrix_set(mat_dm_global_work, nspin, num_cells_dm)
 
-      ! jquad = first_jquad to allocate the matrix set
-      IF (jquad == first_jquad) THEN
+      ! if necessaray, allocate mat_dm_global
+      IF (alloc_dm) THEN
 
          NULLIFY (mat_dm_global)
-         ALLOCATE (mat_dm_global(first_jquad:num_integ_points, num_cells_dm))
+         ALLOCATE (mat_dm_global(1:num_integ_points, num_cells_dm))
 
-         DO iquad = first_jquad, num_integ_points
+         DO iquad = 1, num_integ_points
             NULLIFY (mat_dm_global(iquad, 1)%matrix)
             ALLOCATE (mat_dm_global(iquad, 1)%matrix)
             CALL dbcsr_create(matrix=mat_dm_global(iquad, 1)%matrix, &
@@ -1187,7 +1187,7 @@ CONTAINS
 
          CALL dbcsr_reserve_all_blocks(mat_dm_global_work(jspin, 1)%matrix)
 
-         CALL dbcsr_set(mat_dm_global_work(ispin, 1)%matrix, 0.0_dp)
+         CALL dbcsr_set(mat_dm_global_work(jspin, 1)%matrix, 0.0_dp)
 
       END DO
 

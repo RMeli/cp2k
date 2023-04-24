@@ -17,7 +17,6 @@ MODULE qs_tddfpt2_fhxc
                                               cp_fm_get_info,&
                                               cp_fm_release,&
                                               cp_fm_type
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE dbcsr_api,                       ONLY: &
         dbcsr_add, dbcsr_copy, dbcsr_create, dbcsr_deallocate_matrix, dbcsr_get_info, &
         dbcsr_p_type, dbcsr_release, dbcsr_set, dbcsr_type, dbcsr_type_symmetric
@@ -25,7 +24,7 @@ MODULE qs_tddfpt2_fhxc
    USE kinds,                           ONLY: default_string_length,&
                                               dp
    USE lri_environment_types,           ONLY: lri_kind_type
-   USE message_passing,                 ONLY: mp_sum
+   USE message_passing,                 ONLY: mp_para_env_type
    USE parallel_gemm_api,               ONLY: parallel_gemm
    USE pw_env_types,                    ONLY: pw_env_get
    USE pw_methods,                      ONLY: pw_axpy,&
@@ -51,7 +50,8 @@ MODULE qs_tddfpt2_fhxc
    USE qs_tddfpt2_densities,            ONLY: tddfpt_construct_aux_fit_density
    USE qs_tddfpt2_lri_utils,            ONLY: tddfpt2_lri_Amat
    USE qs_tddfpt2_operators,            ONLY: tddfpt_apply_coulomb,&
-                                              tddfpt_apply_xc
+                                              tddfpt_apply_xc,&
+                                              tddfpt_apply_xc_potential
    USE qs_tddfpt2_stda_types,           ONLY: stda_env_type
    USE qs_tddfpt2_stda_utils,           ONLY: stda_calculate_kernel
    USE qs_tddfpt2_subgroups,            ONLY: tddfpt_subgroup_env_type
@@ -116,12 +116,12 @@ CONTAINS
       LOGICAL                                            :: gapw, gapw_xc
       TYPE(admm_type), POINTER                           :: admm_env
       TYPE(cp_fm_type)                                   :: work_aux_orb, work_orb_orb
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: A_xc_munu_sub, rho_ia_ao, &
                                                             rho_ia_ao_aux_fit
       TYPE(dbcsr_type), POINTER                          :: dbwork
       TYPE(dft_control_type), POINTER                    :: dft_control
       TYPE(lri_kind_type), DIMENSION(:), POINTER         :: lri_v_int
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(pw_pool_type), POINTER                        :: auxbas_pw_pool
       TYPE(pw_type), ALLOCATABLE, DIMENSION(:)           :: V_rspace_sub
       TYPE(pw_type), DIMENSION(:), POINTER               :: rho_ia_g, rho_ia_g_aux_fit, rho_ia_r, &
@@ -230,11 +230,15 @@ CONTAINS
          ! C_x d^{2}E_{x}^{DFT}[\rho] / d\rho^2
          ! + C_{HF} d^{2}E_{x, ADMM}^{DFT}[\rho] / d\rho^2 in case of ADMM calculation
          IF (gapw_xc) THEN
-            CALL tddfpt_apply_xc(A_ia_rspace=work_matrices%A_ia_rspace_sub, kernel_env=kernel_env, &
-                                 rho_ia_struct=work_matrices%rho_xc_struct_sub, &
-                                 is_rks_triplets=is_rks_triplets, pw_env=sub_env%pw_env, &
-                                 work_v_xc=work_matrices%wpw_rspace_sub, &
-                                 work_v_xc_tau=work_matrices%wpw_tau_rspace_sub)
+            IF (kernel_env%do_exck) THEN
+               CPABORT("NYA")
+            ELSE
+               CALL tddfpt_apply_xc(A_ia_rspace=work_matrices%A_ia_rspace_sub, kernel_env=kernel_env, &
+                                    rho_ia_struct=work_matrices%rho_xc_struct_sub, &
+                                    is_rks_triplets=is_rks_triplets, pw_env=sub_env%pw_env, &
+                                    work_v_xc=work_matrices%wpw_rspace_sub, &
+                                    work_v_xc_tau=work_matrices%wpw_tau_rspace_sub)
+            END IF
             DO ispin = 1, nspins
                CALL pw_scale(work_matrices%A_ia_rspace_sub(ispin), &
                              work_matrices%A_ia_rspace_sub(ispin)%pw_grid%dvol)
@@ -246,11 +250,16 @@ CONTAINS
                CALL pw_zero(work_matrices%A_ia_rspace_sub(ispin))
             END DO
          ELSE
-            CALL tddfpt_apply_xc(A_ia_rspace=work_matrices%A_ia_rspace_sub, kernel_env=kernel_env, &
-                                 rho_ia_struct=work_matrices%rho_orb_struct_sub, &
-                                 is_rks_triplets=is_rks_triplets, pw_env=sub_env%pw_env, &
-                                 work_v_xc=work_matrices%wpw_rspace_sub, &
-                                 work_v_xc_tau=work_matrices%wpw_tau_rspace_sub)
+            IF (kernel_env%do_exck) THEN
+               CALL tddfpt_apply_xc_potential(work_matrices%A_ia_rspace_sub, work_matrices%fxc_rspace_sub, &
+                                              work_matrices%rho_orb_struct_sub, is_rks_triplets)
+            ELSE
+               CALL tddfpt_apply_xc(A_ia_rspace=work_matrices%A_ia_rspace_sub, kernel_env=kernel_env, &
+                                    rho_ia_struct=work_matrices%rho_orb_struct_sub, &
+                                    is_rks_triplets=is_rks_triplets, pw_env=sub_env%pw_env, &
+                                    work_v_xc=work_matrices%wpw_rspace_sub, &
+                                    work_v_xc_tau=work_matrices%wpw_tau_rspace_sub)
+            END IF
          END IF
          IF (gapw .OR. gapw_xc) THEN
             rho_atom_set => sub_env%local_rho_set%rho_atom_set
@@ -429,7 +438,7 @@ CONTAINS
                CALL integrate_v_rspace_one_center(work_matrices%A_ia_rspace_sub(ispin), &
                                                   qs_env, lri_v_int, .FALSE., "P_LRI_AUX")
                DO ikind = 1, nkind
-                  CALL mp_sum(lri_v_int(ikind)%v_int, para_env%group)
+                  CALL para_env%sum(lri_v_int(ikind)%v_int)
                END DO
             END IF ! for full kernel using lri
          END DO

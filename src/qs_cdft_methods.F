@@ -23,7 +23,6 @@ MODULE qs_cdft_methods
                                               cp_logger_type
    USE cp_output_handling,              ONLY: cp_print_key_finished_output,&
                                               cp_print_key_unit_nr
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE cp_realspace_grid_cube,          ONLY: cp_cube_to_pw
    USE grid_api,                        ONLY: GRID_FUNC_AB,&
                                               collocate_pgf_product
@@ -38,7 +37,7 @@ MODULE qs_cdft_methods
                                               section_vals_type
    USE kahan_sum,                       ONLY: accurate_dot_product
    USE kinds,                           ONLY: dp
-   USE message_passing,                 ONLY: mp_sum
+   USE message_passing,                 ONLY: mp_para_env_type
    USE particle_types,                  ONLY: particle_type
    USE pw_env_types,                    ONLY: pw_env_get,&
                                               pw_env_type
@@ -643,10 +642,10 @@ CONTAINS
       TYPE(atomic_kind_type), DIMENSION(:), POINTER      :: atomic_kind_set
       TYPE(cdft_control_type), POINTER                   :: cdft_control
       TYPE(cell_type), POINTER                           :: cell
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dft_control_type), POINTER                    :: dft_control
       TYPE(hirshfeld_constraint_type), POINTER           :: hirshfeld_control
       TYPE(hirshfeld_type), POINTER                      :: hirshfeld_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
       TYPE(pw_env_type), POINTER                         :: pw_env
       TYPE(pw_pool_type), POINTER                        :: auxbas_pw_pool
@@ -832,7 +831,7 @@ CONTAINS
                                                        zetp=alpha, eps=hirshfeld_control%atomic_cutoff, &
                                                        pab=pab, o1=0, o2=0, &  ! without map_consistent
                                                        prefactor=1.0_dp, cutoff=0.0_dp)
-                     ! IF (para_env%ionode) PRINT *, "radius", radius
+                     ! IF (para_env%is_source()) PRINT *, "radius", radius
                   END IF
 
                   IF (igroup == 1) THEN
@@ -1160,8 +1159,8 @@ CONTAINS
       TYPE(cdft_control_type), POINTER                   :: cdft_control
       TYPE(cdft_group_type), DIMENSION(:), POINTER       :: group
       TYPE(cp_logger_type), POINTER                      :: logger
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dft_control_type), POINTER                    :: dft_control
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(mpole_rho_atom), DIMENSION(:), POINTER        :: mp_rho
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
       TYPE(pw_type), DIMENSION(:), POINTER               :: charge, rho_r
@@ -1248,9 +1247,9 @@ CONTAINS
          END IF
       END DO
       CALL get_qs_env(qs_env, energy=energy)
-      CALL mp_sum(dE, para_env%group)
+      CALL para_env%sum(dE)
       IF (cdft_control%atomic_charges) THEN
-         CALL mp_sum(electronic_charge, para_env%group)
+         CALL para_env%sum(electronic_charge)
       END IF
       ! Use fragment densities as reference value (= Becke deformation density)
       IF (cdft_control%fragment_density .AND. .NOT. cdft_control%fragments_integrated) THEN
@@ -1352,8 +1351,8 @@ CONTAINS
       TYPE(cdft_control_type), POINTER                   :: cdft_control
       TYPE(cdft_group_type), DIMENSION(:), POINTER       :: group
       TYPE(cell_type), POINTER                           :: cell
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dft_control_type), POINTER                    :: dft_control
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
       TYPE(pw_type), DIMENSION(:), POINTER               :: rho_r
       TYPE(qs_force_type), DIMENSION(:), POINTER         :: force
@@ -1382,8 +1381,6 @@ CONTAINS
       strength(:) = cdft_control%strength(:)
       cutoffs => cdft_control%becke_control%cutoffs
       eps_cavity = cdft_control%becke_control%eps_cavity
-      ALLOCATE (atom_of_kind(natom))
-      ALLOCATE (kind_of(natom))
 
       CALL get_atomic_kind_set(atomic_kind_set=atomic_kind_set, &
                                atom_of_kind=atom_of_kind, &
@@ -1566,13 +1563,13 @@ CONTAINS
       END IF
 
       DO igroup = 1, SIZE(group)
-         CALL mp_sum(group(igroup)%integrated, para_env%group)
+         CALL para_env%sum(group(igroup)%integrated)
       END DO
 
       ! Update force only on master process. Otherwise force due to constraint becomes multiplied
       ! by the number of processes when the final force%rho_elec is constructed in qs_force
       ! by mp_summing [the final integrated(:,:) is distributed on all processors]
-      IF (para_env%ionode) THEN
+      IF (para_env%is_source()) THEN
          DO igroup = 1, SIZE(group)
             DO iatom = 1, natom
                ikind = kind_of(iatom)
@@ -1583,8 +1580,6 @@ CONTAINS
       END IF
 
       DEALLOCATE (strength)
-      DEALLOCATE (atom_of_kind)
-      DEALLOCATE (kind_of)
       DO igroup = 1, SIZE(group)
          DEALLOCATE (group(igroup)%integrated)
       END DO
@@ -1612,8 +1607,8 @@ CONTAINS
       TYPE(cdft_control_type), POINTER                   :: cdft_control
       TYPE(cdft_group_type), DIMENSION(:), POINTER       :: group
       TYPE(cp_logger_type), POINTER                      :: logger
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dft_control_type), POINTER                    :: dft_control
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(pw_env_type), POINTER                         :: pw_env
       TYPE(pw_pool_type), POINTER                        :: auxbas_pw_pool
       TYPE(pw_type), ALLOCATABLE, DIMENSION(:)           :: rho_frag
@@ -1725,7 +1720,7 @@ CONTAINS
                                           accurate_dot_product(group(igroup)%weight%cr3d, rho_frag(i)%cr3d)*dvol
          END IF
       END DO
-      CALL mp_sum(cdft_control%target, para_env%group)
+      CALL para_env%sum(cdft_control%target)
       ! Calculate reference atomic charges int( w_i * rho_frag * dr )
       IF (cdft_control%atomic_charges) THEN
          ALLOCATE (cdft_control%charges_fragment(cdft_control%natoms, nfrag_spins))
@@ -1735,7 +1730,7 @@ CONTAINS
                   accurate_dot_product(cdft_control%charge(iatom)%cr3d, rho_frag(i)%cr3d)*dvol
             END DO
          END DO
-         CALL mp_sum(cdft_control%charges_fragment, para_env%group)
+         CALL para_env%sum(cdft_control%charges_fragment)
       END IF
       DO i = 1, nfrag_spins
          CALL pw_pool_give_back_pw(auxbas_pw_pool, rho_frag(i))

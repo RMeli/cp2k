@@ -17,7 +17,6 @@ MODULE qs_core_energies
                                               get_atomic_kind_set
    USE atprop_types,                    ONLY: atprop_array_init,&
                                               atprop_type
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE dbcsr_api,                       ONLY: dbcsr_dot,&
                                               dbcsr_p_type,&
                                               dbcsr_type
@@ -26,7 +25,7 @@ MODULE qs_core_energies
    USE mathconstants,                   ONLY: oorootpi,&
                                               twopi
    USE message_passing,                 ONLY: mp_comm_type,&
-                                              mp_sum
+                                              mp_para_env_type
    USE particle_types,                  ONLY: particle_type
    USE qs_energy_types,                 ONLY: qs_energy_type
    USE qs_environment_types,            ONLY: get_qs_env,&
@@ -195,7 +194,7 @@ CONTAINS
    SUBROUTINE calculate_ecore_overlap(qs_env, para_env, calculate_forces, molecular, &
                                       E_overlap_core)
       TYPE(qs_environment_type), POINTER                 :: qs_env
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       LOGICAL, INTENT(IN)                                :: calculate_forces
       LOGICAL, INTENT(IN), OPTIONAL                      :: molecular
       REAL(KIND=dp), INTENT(OUT), OPTIONAL               :: E_overlap_core
@@ -233,7 +232,7 @@ CONTAINS
       NULLIFY (force)
       NULLIFY (particle_set)
 
-      group = para_env%group
+      group = para_env
 
       only_molecule = .FALSE.
       IF (PRESENT(molecular)) only_molecule = molecular
@@ -260,7 +259,6 @@ CONTAINS
       zeff(:) = 0.0_dp
 
       IF (calculate_forces) THEN
-         ALLOCATE (atom_of_kind(natom))
          CALL get_atomic_kind_set(atomic_kind_set, atom_of_kind=atom_of_kind)
       END IF
 
@@ -326,7 +324,7 @@ CONTAINS
          virial%pv_virial = virial%pv_virial + pv_loc
       END IF
 
-      CALL mp_sum(ecore_overlap, group)
+      CALL group%sum(ecore_overlap)
 
       energy%core_overlap = ecore_overlap
 

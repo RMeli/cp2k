@@ -36,7 +36,6 @@ MODULE optimize_embedding_potential
                                               cp_print_key_finished_output,&
                                               cp_print_key_should_output,&
                                               cp_print_key_unit_nr
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE cp_realspace_grid_cube,          ONLY: cp_cube_to_pw,&
                                               cp_pw_to_cube,&
                                               cp_pw_to_simple_volumetric
@@ -56,9 +55,7 @@ MODULE optimize_embedding_potential
                                               dp
    USE lri_environment_types,           ONLY: lri_kind_type
    USE mathconstants,                   ONLY: pi
-   USE message_passing,                 ONLY: mp_bcast,&
-                                              mp_max,&
-                                              mp_sum
+   USE message_passing,                 ONLY: mp_para_env_type
    USE mixed_environment_utils,         ONLY: get_subsys_map_index
    USE parallel_gemm_api,               ONLY: parallel_gemm
    USE particle_list_types,             ONLY: particle_list_type
@@ -312,7 +309,7 @@ CONTAINS
       INTEGER                                            :: diff_size, i_dens, size_prev_dens
       TYPE(cp_blacs_env_type), POINTER                   :: blacs_env
       TYPE(cp_fm_struct_type), POINTER                   :: fm_struct
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(pw_env_type), POINTER                         :: pw_env
       TYPE(pw_pool_type), POINTER                        :: auxbas_pw_pool
 
@@ -567,7 +564,7 @@ CONTAINS
       TYPE(qs_environment_type), POINTER                 :: qs_env
       INTEGER                                            :: dimen_aux
 
-      INTEGER                                            :: iatom, ikind, natom, nsgf
+      INTEGER                                            :: iatom, ikind, nsgf
       INTEGER, ALLOCATABLE, DIMENSION(:)                 :: kind_of
       TYPE(atomic_kind_type), DIMENSION(:), POINTER      :: atomic_kind_set
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
@@ -579,19 +576,14 @@ CONTAINS
                       qs_kind_set=qs_kind_set, &
                       atomic_kind_set=atomic_kind_set)
 
-      natom = SIZE(particle_set)
-      ALLOCATE (kind_of(natom))
-
       CALL get_atomic_kind_set(atomic_kind_set, kind_of=kind_of)
 
       dimen_aux = 0
-      DO iatom = 1, natom
+      DO iatom = 1, SIZE(particle_set)
          ikind = kind_of(iatom)
          CALL get_qs_kind(qs_kind=qs_kind_set(ikind), nsgf=nsgf, basis_type="RI_AUX")
          dimen_aux = dimen_aux + nsgf
       END DO
-
-      DEALLOCATE (kind_of)
 
    END SUBROUTINE find_aux_dimen
 
@@ -772,7 +764,7 @@ CONTAINS
       TYPE(cp_blacs_env_type), POINTER                   :: blacs_env
       TYPE(cp_fm_struct_type), POINTER                   :: fm_struct
       TYPE(cp_fm_type)                                   :: my_embed_pot_coef
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
 
       ! Get the vector dimension
       CALL find_aux_dimen(qs_env, dimen_aux)
@@ -802,7 +794,7 @@ CONTAINS
       ALLOCATE (coef(dimen_var_aux))
       coef = 0.0_dp
 
-      IF (para_env%ionode) THEN
+      IF (para_env%is_source()) THEN
 
          ! Get the restart file name
          CALL embed_restart_file_name(filename, section)
@@ -831,7 +823,7 @@ CONTAINS
       END IF
 
       ! Broadcast the coefficients on all processes
-      CALL mp_bcast(coef, para_env%source, para_env%group)
+      CALL para_env%bcast(coef)
 
       ! Copy to fm_type structure
       ! Information about full matrix gradient
@@ -1127,7 +1119,7 @@ CONTAINS
       TYPE(cp_fm_type)                                   :: embed_pot_coeff_spin, &
                                                             embed_pot_coeff_spinless, &
                                                             regular_term, spin_reg, spinless_reg
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(pw_env_type), POINTER                         :: pw_env
       TYPE(pw_pool_type), POINTER                        :: auxbas_pw_pool
 
@@ -1267,8 +1259,8 @@ CONTAINS
       REAL(KIND=dp), ALLOCATABLE, DIMENSION(:)           :: pot_grad
       TYPE(atomic_kind_type), DIMENSION(:), POINTER      :: atomic_kind_set
       TYPE(cell_type), POINTER                           :: cell
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dft_control_type), POINTER                    :: dft_control
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
       TYPE(qs_kind_type), DIMENSION(:), POINTER          :: qs_kind_set
 
@@ -1299,7 +1291,7 @@ CONTAINS
       CALL integrate_v_rspace_one_center(rho_r, qs_env, lri, &
                                          .FALSE., "RI_AUX")
       DO ikind = 1, SIZE(lri)
-         CALL mp_sum(lri(ikind)%v_int, para_env%group)
+         CALL para_env%sum(lri(ikind)%v_int)
       END DO
 
       pot_grad = 0.0_dp
@@ -1321,7 +1313,7 @@ CONTAINS
          CALL integrate_v_rspace_one_center(rho_spin, qs_env, lri, &
                                             .FALSE., "RI_AUX")
          DO ikind = 1, SIZE(lri)
-            CALL mp_sum(lri(ikind)%v_int, para_env%group)
+            CALL para_env%sum(lri(ikind)%v_int)
          END DO
 
          start_pos = dimen_aux + 1
@@ -1777,9 +1769,9 @@ CONTAINS
       TYPE(cp_fm_type)                                   :: embed_pot_coef_spin, &
                                                             embed_pot_coef_spinless
       TYPE(cp_fm_type), POINTER                          :: mo_coeff
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dft_control_type), POINTER                    :: dft_control
       TYPE(mo_set_type), DIMENSION(:), POINTER           :: mos
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
       TYPE(pw_env_type), POINTER                         :: pw_env
       TYPE(pw_pool_type), POINTER                        :: auxbas_pw_pool
@@ -1847,7 +1839,7 @@ CONTAINS
             l_global = row_indices(LLL)
             wf_vector(l_global) = embed_pot_coef_spinless%local_data(LLL, 1)
          END DO
-         CALL mp_sum(wf_vector, para_env%group)
+         CALL para_env%sum(wf_vector)
 
          ! Calculate the variable part of the embedding potential
          CALL calculate_wavefunction(mo_coeff, 1, psi_L, rho_g, atomic_kind_set, &
@@ -1874,7 +1866,7 @@ CONTAINS
             l_global = row_indices(LLL)
             wf_vector(l_global) = embed_pot_coef_spin%local_data(LLL, 1)
          END DO
-         CALL mp_sum(wf_vector, para_env%group)
+         CALL para_env%sum(wf_vector)
 
          ! Calculate the variable part of the embedding potential
          CALL calculate_wavefunction(mo_coeff, 1, psi_L, rho_g, atomic_kind_set, &
@@ -1896,7 +1888,7 @@ CONTAINS
             l_global = row_indices(LLL)
             wf_vector(l_global) = embed_pot_coef%local_data(LLL, 1)
          END DO
-         CALL mp_sum(wf_vector, para_env%group)
+         CALL para_env%sum(wf_vector)
 
          ! Calculate the variable part of the embedding potential
          CALL calculate_wavefunction(mo_coeff, 1, psi_L, rho_g, atomic_kind_set, &
@@ -2056,7 +2048,7 @@ CONTAINS
       TYPE(cp_fm_struct_type), POINTER                   :: fm_struct_mat, fm_struct_vec, &
                                                             fm_struct_vec_t
       TYPE(cp_fm_type)                                   :: B_s, B_s_s_B, s_t_B, y, y_y_t
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
 
       ! Recover the dimension
       CALL cp_fm_get_info(matrix=Hess, &
@@ -2314,7 +2306,7 @@ CONTAINS
       LOGICAL                                            :: converged, do_shift
       REAL(KIND=dp) :: diag_grad_norm, grad_min, hess_min, shift, shift_max, shift_min, step_len, &
          step_minus_trad, step_minus_trad_first, step_minus_trad_max, step_minus_trad_min
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
 
       CALL timeset(routineN, handle)
 
@@ -2397,7 +2389,7 @@ CONTAINS
                red_eigenval_map(l_global) = 1
             END IF
          END DO
-         CALL mp_sum(red_eigenval_map, para_env%group)
+         CALL para_env%sum(red_eigenval_map)
 
          ! Set shift as -hess_min and find step on the reduced space of negative-value
          ! eigenvectors
@@ -2445,7 +2437,7 @@ CONTAINS
       INTEGER                                            :: l_global, LLL, nrow_local
       INTEGER, DIMENSION(:), POINTER                     :: row_indices
       REAL(KIND=dp)                                      :: step, step_1d
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
 
       CALL cp_fm_get_info(matrix=diag_grad, &
                           nrow_local=nrow_local, &
@@ -2461,7 +2453,7 @@ CONTAINS
          END IF
       END DO
 
-      CALL mp_sum(step, para_env%group)
+      CALL para_env%sum(step)
 
       step_minus_trad = SQRT(step) - trust_rad
 
@@ -3070,7 +3062,7 @@ CONTAINS
       ! Find the maximum absolute value
       max_diff = MAXVAL(ABS(grid_3d))
       total_max_diff = max_diff
-      CALL mp_max(total_max_diff, diff_rho_r%pw_grid%para%group)
+      CALL diff_rho_r%pw_grid%para%group%max(total_max_diff)
 
       ! Deallocate the density
       DEALLOCATE (grid_3d)

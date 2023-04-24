@@ -27,6 +27,7 @@ FLAG_EXCEPTIONS = (
     r"LIBINT_CONTRACTED_INTS",
     r"XC_MAJOR_VERSION",
     r"XC_MINOR_VERSION",
+    r"OMP_DEFAULT_NONE_WITH_OOP",
     r"_OPENMP",
     r"__COMPILE_ARCH",
     r"__COMPILE_DATE",
@@ -151,7 +152,12 @@ def check_file(path: pathlib.Path) -> typing.List[str]:
     if "\r\n" in content:
         warnings += [f"{path}: contains DOS linebreaks"]
 
-    if fn_ext not in (".pot", ".patch") and basefn != "Makefile" and "\t" in content:
+    if (
+        fn_ext not in (".pot", ".patch")
+        and basefn != "Makefile"
+        and basefn != "generate_arch_files.sh"
+        and "\t" in content
+    ):
         warnings += [f"{path}: contains tab character"]
 
     if fn_ext == ".cu" and "#if defined(_OMP_H)\n#error" not in content:

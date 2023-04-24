@@ -44,7 +44,6 @@ MODULE environment
                                               low_print_level,&
                                               medium_print_level,&
                                               silent_print_level
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE fft_tools,                       ONLY: fft3d,&
                                               finalize_fft,&
                                               init_fft
@@ -80,11 +79,10 @@ MODULE environment
    USE machine,                         ONLY: &
         flush_should_flush, m_cpuid, m_cpuid_name, m_cpuid_static, m_cpuinfo, m_energy, &
         m_get_omp_stacksize, m_memory_details, m_procrun
-   USE message_passing,                 ONLY: add_mp_perf_env,&
+   USE message_passing,                 ONLY: mp_collect_timings,&
+                                              mp_para_env_type
+   USE mp_perf_env,                     ONLY: add_mp_perf_env,&
                                               describe_mp_perf_env,&
-                                              mp_collect_timings,&
-                                              mp_max,&
-                                              mp_sum,&
                                               rm_mp_perf_env
    USE orbital_pointers,                ONLY: deallocate_orbital_pointers,&
                                               init_orbital_pointers
@@ -142,7 +140,7 @@ CONTAINS
 ! **************************************************************************************************
    SUBROUTINE cp2k_init(para_env, output_unit, globenv, input_file_name, wdir)
 
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       INTEGER                                            :: output_unit
       TYPE(global_environment_type), POINTER             :: globenv
       CHARACTER(LEN=*)                                   :: input_file_name
@@ -160,7 +158,7 @@ CONTAINS
       CALL add_mp_perf_env()
 
       ! Init the default logger
-      IF (para_env%ionode) THEN
+      IF (para_env%is_source()) THEN
          my_output_unit = output_unit
       ELSE
          my_output_unit = -1
@@ -235,7 +233,7 @@ CONTAINS
 !> \param output_unit ...
 ! **************************************************************************************************
    SUBROUTINE echo_all_hosts(para_env, output_unit)
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       INTEGER                                            :: output_unit
 
       CHARACTER(LEN=default_string_length)               :: string
@@ -249,11 +247,11 @@ CONTAINS
       all_pid(:) = 0
       all_pid(para_env%mepos + 1) = r_pid
 
-      CALL mp_sum(all_pid, para_env%group)
+      CALL para_env%sum(all_pid)
       ALLOCATE (all_host(30, para_env%num_pe))
       all_host(:, :) = 0
       CALL string_to_ascii(r_host_name, all_host(:, para_env%mepos + 1))
-      CALL mp_sum(all_host, para_env%group)
+      CALL para_env%sum(all_host)
       IF (output_unit > 0) THEN
 
          WRITE (UNIT=output_unit, FMT="(T2,A)") ""
@@ -276,7 +274,7 @@ CONTAINS
 !> \param output_unit ...
 ! **************************************************************************************************
    SUBROUTINE echo_all_process_host(para_env, output_unit)
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       INTEGER                                            :: output_unit
 
       CHARACTER(LEN=default_string_length)               :: string, string_sec
@@ -289,7 +287,7 @@ CONTAINS
 
       IF (m_procrun(r_pid) .EQ. 1) THEN
          CALL string_to_ascii(r_host_name, all_host(:, para_env%mepos + 1))
-         CALL mp_sum(all_host, para_env%group)
+         CALL para_env%sum(all_host)
       END IF
 
       IF (output_unit > 0) THEN
@@ -338,7 +336,7 @@ CONTAINS
    SUBROUTINE cp2k_read(root_section, para_env, globenv)
 
       TYPE(section_vals_type), POINTER                   :: root_section
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(global_environment_type), POINTER             :: globenv
 
       CHARACTER(len=default_string_length)               :: c_val
@@ -393,7 +391,7 @@ CONTAINS
    SUBROUTINE cp2k_setup(root_section, para_env, globenv)
 
       TYPE(section_vals_type), POINTER                   :: root_section
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(global_environment_type), POINTER             :: globenv
 
       INTEGER                                            :: iw, maxl
@@ -435,7 +433,7 @@ CONTAINS
       iw = cp_print_key_unit_nr(logger, root_section, "GLOBAL%PRINT/RNG_CHECK", &
                                 extension=".Log")
       IF (iw > 0) THEN
-         CALL check_rng(iw, para_env%ionode)
+         CALL check_rng(iw, para_env%is_source())
       END IF
 
       CALL cp_print_key_finished_output(iw, logger, root_section, &
@@ -478,7 +476,7 @@ CONTAINS
    SUBROUTINE read_global_section(root_section, para_env, globenv)
 
       TYPE(section_vals_type), POINTER                   :: root_section
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(global_environment_type), POINTER             :: globenv
 
       CHARACTER(LEN=6), PARAMETER                        :: start_section_label = "GLOBAL"
@@ -565,7 +563,7 @@ CONTAINS
 
       IF (trace .AND. (.NOT. trace_master .OR. para_env%mepos == 0)) THEN
          unit_nr = -1
-         IF (logger%para_env%ionode .OR. .NOT. trace_master) &
+         IF (logger%para_env%is_source() .OR. .NOT. trace_master) &
             unit_nr = cp_logger_get_default_unit_nr(logger, local=.TRUE.)
          WRITE (tracing_string, "(I6.6,A1,I6.6)") para_env%mepos, ":", para_env%num_pe
          IF (ASSOCIATED(trace_routines)) THEN
@@ -650,13 +648,13 @@ CONTAINS
       Slab_avr = Slab
       SReclaimable_avr = SReclaimable
       MemLikelyFree_avr = MemLikelyFree
-      CALL mp_sum(MemTotal_avr, para_env%group); MemTotal_avr = MemTotal_avr/para_env%num_pe/1024
-      CALL mp_sum(MemFree_avr, para_env%group); MemFree_avr = MemFree_avr/para_env%num_pe/1024
-      CALL mp_sum(Buffers_avr, para_env%group); Buffers_avr = Buffers_avr/para_env%num_pe/1024
-      CALL mp_sum(Cached_avr, para_env%group); Cached_avr = Cached_avr/para_env%num_pe/1024
-      CALL mp_sum(Slab_avr, para_env%group); Slab_avr = Slab_avr/para_env%num_pe/1024
-      CALL mp_sum(SReclaimable_avr, para_env%group); SReclaimable_avr = SReclaimable_avr/para_env%num_pe/1024
-      CALL mp_sum(MemLikelyFree_avr, para_env%group); MemLikelyFree_avr = MemLikelyFree_avr/para_env%num_pe/1024
+      CALL para_env%sum(MemTotal_avr); MemTotal_avr = MemTotal_avr/para_env%num_pe/1024
+      CALL para_env%sum(MemFree_avr); MemFree_avr = MemFree_avr/para_env%num_pe/1024
+      CALL para_env%sum(Buffers_avr); Buffers_avr = Buffers_avr/para_env%num_pe/1024
+      CALL para_env%sum(Cached_avr); Cached_avr = Cached_avr/para_env%num_pe/1024
+      CALL para_env%sum(Slab_avr); Slab_avr = Slab_avr/para_env%num_pe/1024
+      CALL para_env%sum(SReclaimable_avr); SReclaimable_avr = SReclaimable_avr/para_env%num_pe/1024
+      CALL para_env%sum(MemLikelyFree_avr); MemLikelyFree_avr = MemLikelyFree_avr/para_env%num_pe/1024
 
       MemTotal_min = -MemTotal
       MemFree_min = -MemFree
@@ -665,13 +663,13 @@ CONTAINS
       Slab_min = -Slab
       SReclaimable_min = -SReclaimable
       MemLikelyFree_min = -MemLikelyFree
-      CALL mp_max(MemTotal_min, para_env%group); MemTotal_min = -MemTotal_min/1024
-      CALL mp_max(MemFree_min, para_env%group); MemFree_min = -MemFree_min/1024
-      CALL mp_max(Buffers_min, para_env%group); Buffers_min = -Buffers_min/1024
-      CALL mp_max(Cached_min, para_env%group); Cached_min = -Cached_min/1024
-      CALL mp_max(Slab_min, para_env%group); Slab_min = -Slab_min/1024
-      CALL mp_max(SReclaimable_min, para_env%group); SReclaimable_min = -SReclaimable_min/1024
-      CALL mp_max(MemLikelyFree_min, para_env%group); MemLikelyFree_min = -MemLikelyFree_min/1024
+      CALL para_env%max(MemTotal_min); MemTotal_min = -MemTotal_min/1024
+      CALL para_env%max(MemFree_min); MemFree_min = -MemFree_min/1024
+      CALL para_env%max(Buffers_min); Buffers_min = -Buffers_min/1024
+      CALL para_env%max(Cached_min); Cached_min = -Cached_min/1024
+      CALL para_env%max(Slab_min); Slab_min = -Slab_min/1024
+      CALL para_env%max(SReclaimable_min); SReclaimable_min = -SReclaimable_min/1024
+      CALL para_env%max(MemLikelyFree_min); MemLikelyFree_min = -MemLikelyFree_min/1024
 
       MemTotal_max = MemTotal
       MemFree_max = MemFree
@@ -680,13 +678,13 @@ CONTAINS
       Slab_max = Slab
       SReclaimable_max = SReclaimable
       MemLikelyFree_max = MemLikelyFree
-      CALL mp_max(MemTotal_max, para_env%group); MemTotal_max = MemTotal_max/1024
-      CALL mp_max(MemFree_max, para_env%group); MemFree_max = MemFree_max/1024
-      CALL mp_max(Buffers_max, para_env%group); Buffers_max = Buffers_max/1024
-      CALL mp_max(Cached_max, para_env%group); Cached_max = Cached_max/1024
-      CALL mp_max(Slab_max, para_env%group); Slab_max = Slab_max/1024
-      CALL mp_max(SReclaimable_max, para_env%group); SReclaimable_max = SReclaimable_max/1024
-      CALL mp_max(MemLikelyFree_max, para_env%group); MemLikelyFree_max = MemLikelyFree_max/1024
+      CALL para_env%max(MemTotal_max); MemTotal_max = MemTotal_max/1024
+      CALL para_env%max(MemFree_max); MemFree_max = MemFree_max/1024
+      CALL para_env%max(Buffers_max); Buffers_max = Buffers_max/1024
+      CALL para_env%max(Cached_max); Cached_max = Cached_max/1024
+      CALL para_env%max(Slab_max); Slab_max = Slab_max/1024
+      CALL para_env%max(SReclaimable_max); SReclaimable_max = SReclaimable_max/1024
+      CALL para_env%max(MemLikelyFree_max); MemLikelyFree_max = MemLikelyFree_max/1024
 
       MemTotal = MemTotal/1024
       MemFree = MemFree/1024
@@ -926,7 +924,7 @@ CONTAINS
    SUBROUTINE read_cp2k_section(root_section, para_env, globenv)
 
       TYPE(section_vals_type), POINTER                   :: root_section
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(global_environment_type), POINTER             :: globenv
 
       INTEGER                                            :: output_unit
@@ -1174,7 +1172,7 @@ CONTAINS
    SUBROUTINE cp2k_finalize(root_section, para_env, globenv, wdir, q_finalize)
 
       TYPE(section_vals_type), POINTER                   :: root_section
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(global_environment_type), POINTER             :: globenv
       CHARACTER(LEN=*), OPTIONAL                         :: wdir
       LOGICAL, INTENT(IN), OPTIONAL                      :: q_finalize
@@ -1257,7 +1255,7 @@ CONTAINS
             WRITE (UNIT=iw, FMT="()")
             WRITE (UNIT=iw, FMT="(T2,A)") "-------------------------------------------------------------------------------"
          END IF
-         IF (cg_mode == CALLGRAPH_ALL .OR. para_env%ionode) &
+         IF (cg_mode == CALLGRAPH_ALL .OR. para_env%is_source()) &
             CALL timings_report_callgraph(TRIM(cg_filename)//".callgraph")
       END IF
 
@@ -1267,7 +1265,7 @@ CONTAINS
       CALL rm_mp_perf_env()
       CALL rm_timer_env()
 
-      IF (para_env%ionode) THEN
+      IF (para_env%is_source()) THEN
          iw = cp_print_key_unit_nr(logger, root_section, "GLOBAL%PROGRAM_RUN_INFO", &
                                    extension=".log")
 

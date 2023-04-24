@@ -7,7 +7,6 @@
 
 MODULE qs_fb_com_tasks_types
 
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE dbcsr_api,                       ONLY: dbcsr_get_block_p,&
                                               dbcsr_get_info,&
                                               dbcsr_put_block,&
@@ -16,7 +15,7 @@ MODULE qs_fb_com_tasks_types
                                               int_4,&
                                               int_8
    USE memory_utilities,                ONLY: reallocate
-   USE message_passing,                 ONLY: mp_alltoall
+   USE message_passing,                 ONLY: mp_para_env_type
    USE qs_fb_matrix_data_types,         ONLY: fb_matrix_data_add,&
                                               fb_matrix_data_get,&
                                               fb_matrix_data_has_data,&
@@ -475,7 +474,7 @@ CONTAINS
       TYPE(fb_com_tasks_obj), INTENT(INOUT)              :: tasks_dest_is_me
       CHARACTER, INTENT(IN)                              :: direction
       TYPE(fb_com_tasks_obj), INTENT(INOUT)              :: tasks_src_is_me
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
 
       CHARACTER(LEN=*), PARAMETER :: routineN = 'fb_com_tasks_transpose_dest_src'
 
@@ -525,7 +524,7 @@ CONTAINS
          send_buf(rank) = send_buf(rank) + 1
       END DO
 
-      CALL mp_alltoall(send_buf, recv_buf, 1, para_env%group)
+      CALL para_env%alltoall(send_buf, recv_buf, 1)
 
       ! now that we know how many recv/send tasks to send, pack the
       ! tasks, and send them around, so that the recv/send tasks are
@@ -569,9 +568,8 @@ CONTAINS
          send_sizes(rank) = send_sizes(rank) + task_dim
       END DO
       ! do communication
-      CALL mp_alltoall(send_buf, send_sizes, send_disps, &
-                       recv_buf, recv_sizes, recv_disps, &
-                       para_env%group)
+      CALL para_env%alltoall(send_buf, send_sizes, send_disps, &
+                             recv_buf, recv_sizes, recv_disps)
 
       ! deallocate send buffers
       DEALLOCATE (send_buf)
@@ -927,7 +925,7 @@ CONTAINS
                                             matrix_storage)
       TYPE(dbcsr_type), POINTER                          :: dbcsr_mat
       TYPE(fb_com_atom_pairs_obj), INTENT(IN)            :: atom_pairs_send, atom_pairs_recv
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(fb_matrix_data_obj), INTENT(INOUT)            :: matrix_storage
 
       CHARACTER(LEN=*), PARAMETER :: routineN = 'fb_com_atom_pairs_gather_blks'
@@ -1036,9 +1034,8 @@ CONTAINS
       END DO ! ipe
 
       ! do communication
-      CALL mp_alltoall(send_buf, send_sizes, send_disps, &
-                       recv_buf, recv_sizes, recv_disps, &
-                       para_env%group)
+      CALL para_env%alltoall(send_buf, send_sizes, send_disps, &
+                             recv_buf, recv_sizes, recv_disps)
 
       ! cleanup temporary arrays no longer needed
       DEALLOCATE (send_buf)
@@ -1113,7 +1110,7 @@ CONTAINS
                                                 dbcsr_mat)
       TYPE(fb_matrix_data_obj), INTENT(IN)               :: matrix_storage
       TYPE(fb_com_atom_pairs_obj), INTENT(IN)            :: atom_pairs_send, atom_pairs_recv
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_type), POINTER                          :: dbcsr_mat
 
       CHARACTER(LEN=*), PARAMETER :: routineN = 'fb_com_atom_pairs_distribute_blks'
@@ -1221,9 +1218,8 @@ CONTAINS
       END DO ! ipe
 
       ! do communication
-      CALL mp_alltoall(send_buf, send_sizes, send_disps, &
-                       recv_buf, recv_sizes, recv_disps, &
-                       para_env%group)
+      CALL para_env%alltoall(send_buf, send_sizes, send_disps, &
+                             recv_buf, recv_sizes, recv_disps)
 
       ! cleanup temporary arrays no longer needed
       DEALLOCATE (send_buf)

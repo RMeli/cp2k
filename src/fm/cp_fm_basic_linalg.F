@@ -28,8 +28,7 @@ MODULE cp_fm_basic_linalg
    USE machine, ONLY: m_memory
    USE mathlib, ONLY: get_pseudo_inverse_svd, &
                       invert_matrix
-   USE message_passing, ONLY: mp_comm_type, &
-                              mp_sum
+   USE message_passing, ONLY: mp_comm_type
 #include "../base/base_uses.f90"
 
    IMPLICIT NONE
@@ -61,6 +60,8 @@ MODULE cp_fm_basic_linalg
              cp_fm_solve, & ! solves the equation  A*B=C A and C are input
              cp_fm_pdgeqpf, & ! compute a QR factorization with column pivoting of a M-by-N distributed matrix
              cp_fm_pdorgqr, & ! generates an M-by-N as first N columns of a product of K elementary reflectors
+             cp_fm_rot_rows, & ! rotates two rows
+             cp_fm_rot_cols, & ! rotates two columns
              cp_fm_Gram_Schmidt_orthonorm ! Gram-Schmidt orthonormalization of columns of a full matrix
 
    REAL(KIND=dp), EXTERNAL :: dlange, pdlange, pdlatra
@@ -102,7 +103,7 @@ CONTAINS
 
       CHARACTER(len=*), PARAMETER :: routineN = 'cp_fm_scale_and_add'
 
-      INTEGER                                            :: handle, size_a
+      INTEGER                                            :: handle, size_a, size_b
       REAL(KIND=dp)                                      :: my_beta
       REAL(KIND=dp), DIMENSION(:, :), POINTER            :: a, b
       REAL(KIND=sp), DIMENSION(:, :), POINTER            :: a_sp, b_sp
@@ -144,7 +145,7 @@ CONTAINS
          END IF
       END IF
       IF (my_beta .NE. 0.0_dp) THEN
-         IF (matrix_a%matrix_struct%context%group /= matrix_b%matrix_struct%context%group) &
+         IF (matrix_a%matrix_struct%context /= matrix_b%matrix_struct%context) &
             CPABORT("matrixes must be in the same blacs context")
 
          IF (cp_fm_struct_equivalent(matrix_a%matrix_struct, &
@@ -152,6 +153,13 @@ CONTAINS
 
             b => matrix_b%local_data
             b_sp => matrix_b%local_data_sp
+            IF (matrix_b%use_sp) THEN
+               size_b = SIZE(b_sp, 1)*SIZE(b_sp, 2)
+            ELSE
+               size_b = SIZE(b, 1)*SIZE(b, 2)
+            END IF
+            IF (size_a /= size_b) &
+               CPABORT("Matrixes must have same locale sizes")
 
             IF (matrix_a%use_sp .AND. matrix_b%use_sp) THEN
                CALL saxpy(size_a, REAL(my_beta, sp), b_sp, 1, a_sp, 1)
@@ -568,8 +576,8 @@ CONTAINS
       size_a = SIZE(a, 1)*SIZE(a, 2)
       norm = DDOT(size_a, a(1, 1), 1, a(1, 1), 1)
 #if defined(__SCALAPACK)
-      group = matrix_a%matrix_struct%para_env%group
-      CALL mp_sum(norm, group)
+      group = matrix_a%matrix_struct%para_env
+      CALL group%sum(norm)
 #endif
       norm = SQRT(norm)
 
@@ -719,7 +727,7 @@ CONTAINS
       nprow = context%num_pe(1)
       npcol = context%num_pe(2)
 
-      group = matrix_a%matrix_struct%para_env%group
+      group = matrix_a%matrix_struct%para_env
 
       a => matrix_a%local_data
       b => matrix_b%local_data
@@ -745,7 +753,7 @@ CONTAINS
                                       b(1:nrow_local, 1:ncol_local))
       END IF
 
-      CALL mp_sum(trace, group)
+      CALL group%sum(trace)
 
       CALL timestop(handle)
 
@@ -824,8 +832,8 @@ CONTAINS
          END DO
 !$OMP END PARALLEL DO
 
-         group = matrix_b%matrix_struct%para_env%group
-         CALL mp_sum(trace, group)
+         group = matrix_b%matrix_struct%para_env
+         CALL group%sum(trace)
 
          CALL timestop(handle)
       END SUBROUTINE cp_fm_trace_a1b0t1_${shortname}$
@@ -908,8 +916,8 @@ CONTAINS
             END DO
 !$OMP END PARALLEL DO
 
-            group = matrix_a(1) ${appendix1}$%matrix_struct%para_env%group
-            CALL mp_sum(trace, group)
+            group = matrix_a(1) ${appendix1}$%matrix_struct%para_env
+            CALL group%sum(trace)
 
             CALL timestop(handle)
          END SUBROUTINE cp_fm_trace_a1b1t1_${shortname1}$${shortname2}$
@@ -1000,8 +1008,8 @@ CONTAINS
             END DO
 !$OMP END PARALLEL DO
 
-            group = matrix_a(1, 1) ${appendix1}$%matrix_struct%para_env%group
-            CALL mp_sum(trace, group)
+            group = matrix_a(1, 1) ${appendix1}$%matrix_struct%para_env
+            CALL group%sum(trace)
 
             CALL timestop(handle)
          END SUBROUTINE cp_fm_contracted_trace_a2b2t2_${shortname1}$${shortname2}$
@@ -1535,8 +1543,8 @@ CONTAINS
             END IF
             DEALLOCATE (diag)
 
-            group = matrix_lu%matrix_struct%para_env%group
-            CALL mp_sum(exponent_of_minus_one, group)
+            group = matrix_lu%matrix_struct%para_env
+            CALL group%sum(exponent_of_minus_one)
 
             determinant = determinant*(-1.0_dp)**exponent_of_minus_one
 
@@ -2301,6 +2309,90 @@ CONTAINS
    END SUBROUTINE cp_fm_pdorgqr
 
 ! **************************************************************************************************
+!> \brief Applies a planar rotation defined by cs and sn to the i'th and j'th rows.
+!> \param cs cosine of the rotation angle
+!> \param sn sinus of the rotation angle
+!> \param irow ...
+!> \param jrow ...
+!> \author Ole Schuett
+! **************************************************************************************************
+   SUBROUTINE cp_fm_rot_rows(matrix, irow, jrow, cs, sn)
+      TYPE(cp_fm_type), INTENT(IN)             :: matrix
+      INTEGER, INTENT(IN)                      :: irow, jrow
+      REAL(dp), INTENT(IN)                     :: cs, sn
+
+      CHARACTER(len=*), PARAMETER :: routineN = 'cp_fm_rot_rows'
+      INTEGER                                  :: handle, nrow, ncol
+
+#if defined(__SCALAPACK)
+      INTEGER                                  :: info, lwork
+      INTEGER, DIMENSION(9)                    :: desc
+      REAL(dp), DIMENSION(:), ALLOCATABLE      :: work
+#endif
+
+      CALL timeset(routineN, handle)
+      CALL cp_fm_get_info(matrix, nrow_global=nrow, ncol_global=ncol)
+
+#if defined(__SCALAPACK)
+      lwork = 2*ncol + 1
+      ALLOCATE (work(lwork))
+      desc(:) = matrix%matrix_struct%descriptor(:)
+      CALL pdrot(ncol, &
+                 matrix%local_data(1, 1), irow, 1, desc, ncol, &
+                 matrix%local_data(1, 1), jrow, 1, desc, ncol, &
+                 cs, sn, work, lwork, info)
+      CPASSERT(info == 0)
+      DEALLOCATE (work)
+#else
+      CALL drot(ncol, matrix%local_data(irow, 1), ncol, matrix%local_data(jrow, 1), ncol, cs, sn)
+#endif
+
+      CALL timestop(handle)
+   END SUBROUTINE cp_fm_rot_rows
+
+! **************************************************************************************************
+!> \brief Applies a planar rotation defined by cs and sn to the i'th and j'th columnns.
+!> \param cs cosine of the rotation angle
+!> \param sn sinus of the rotation angle
+!> \param icol ...
+!> \param jcol ...
+!> \author Ole Schuett
+! **************************************************************************************************
+   SUBROUTINE cp_fm_rot_cols(matrix, icol, jcol, cs, sn)
+      TYPE(cp_fm_type), INTENT(IN)             :: matrix
+      INTEGER, INTENT(IN)                      :: icol, jcol
+      REAL(dp), INTENT(IN)                     :: cs, sn
+
+      CHARACTER(len=*), PARAMETER :: routineN = 'cp_fm_rot_cols'
+      INTEGER                                  :: handle, nrow, ncol
+
+#if defined(__SCALAPACK)
+      INTEGER                                  :: info, lwork
+      INTEGER, DIMENSION(9)                    :: desc
+      REAL(dp), DIMENSION(:), ALLOCATABLE      :: work
+#endif
+
+      CALL timeset(routineN, handle)
+      CALL cp_fm_get_info(matrix, nrow_global=nrow, ncol_global=ncol)
+
+#if defined(__SCALAPACK)
+      lwork = 2*nrow + 1
+      ALLOCATE (work(lwork))
+      desc(:) = matrix%matrix_struct%descriptor(:)
+      CALL pdrot(nrow, &
+                 matrix%local_data(1, 1), 1, icol, desc, 1, &
+                 matrix%local_data(1, 1), 1, jcol, desc, 1, &
+                 cs, sn, work, lwork, info)
+      CPASSERT(info == 0)
+      DEALLOCATE (work)
+#else
+      CALL drot(nrow, matrix%local_data(1, icol), 1, matrix%local_data(1, jcol), 1, cs, sn)
+#endif
+
+      CALL timestop(handle)
+   END SUBROUTINE cp_fm_rot_cols
+
+! **************************************************************************************************
 !> \brief Orthonormalizes selected rows and columns of a full matrix, matrix_a
 !> \param matrix_a ...
 !> \param B ...
@@ -2433,7 +2525,7 @@ CONTAINS
             END IF
 
          END DO
-         CALL mp_sum(B, matrix_a%matrix_struct%para_env%group)
+         CALL matrix_a%matrix_struct%para_env%sum(B)
       END IF
 
       CALL timestop(handle)

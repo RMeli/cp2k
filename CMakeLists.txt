@@ -23,12 +23,15 @@ endif()
 # =================================================================================================
 # PROJECT AND VERSION
 include(CMakeDependentOption)
+include(GitSubmodule)
+include(CustomTargets)
+
 cmake_policy(SET CMP0048 NEW)
 
-set(VERSION_MAJOR 22)
+set(VERSION_MAJOR 23)
 # anything above 12 is to indicate that it is devel-branch. The git hash commit
 # is the only important information to give. It is retrieved few lines below.
-set(VERSION_MINOR 99)
+set(VERSION_MINOR 1)
 set(VERSION_PATCH 00)
 
 project(
@@ -56,9 +59,6 @@ find_package(PkgConfig)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY
     ${cp2k_BINARY_DIR}/lib
     CACHE PATH "Single output directory for building all libraries.")
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY
-    ${cp2k_BINARY_DIR}/bin
-    CACHE PATH "Single output directory for building all executables.")
 
 # Search for rocm in common locations
 foreach(__var ROCM_ROOT CRAY_ROCM_ROOT ORNL_ROCM_ROOT CRAY_ROCM_PREFIX
@@ -74,7 +74,14 @@ endforeach()
 # =================================================================================================
 # OPTIONS
 
+# option(CP2K_BUILD_DBCSR "Build dbcsr before building cp2k" OFF)
+option(CP2K_ENABLE_REGTESTS
+       "Enable installation of the binaries for running regtests afterwards"
+       OFF)
 option(CMAKE_POSITION_INDEPENDENT_CODE "Enable position independent code" ON)
+option(CP2K_ENABLE_CONSISTENCY_CHECKS
+       "Check that the list of compiled files and files contained in src match"
+       OFF)
 option(CP2K_DEBUG_MODE "Enable several additional options for debugging cp2k."
        OFF)
 option(CP2K_USE_SIRIUS "Enable plane wave dft calculations with sirius" OFF)
@@ -84,29 +91,50 @@ option(CP2K_USE_MPI "Enable MPI support" ON)
 option(CP2K_USE_ELPA "Enable elpa support" OFF)
 option(CP2K_USE_PEXSI "Enable pexsi support" OFF)
 option(CP2K_USE_SUPERLU "Enable superlu support" OFF)
-option(CP2K_USE_COSMA "COSMA is a drop in replacement of scalapack dgemm" ON)
-option(CP2K_USE_LIBINT2 "Enable libint2 support" ON)
+option(CP2K_USE_COSMA "COSMA is a drop in replacement of scalapack dgemm" OFF)
+option(CP2K_USE_LIBINT2 "Enable libint2 support" OFF)
 option(CP2K_USE_PLUMED "Enable plumed2 support" OFF)
 option(CP2K_USE_VORI "Enable libvori support" OFF)
 option(CP2K_USE_PEXSI "Enable pexsi support" OFF)
 option(CP2K_USE_QUIP "Enable quip support" OFF)
-option(CP2K_USE_SPGLIB "Enable spglib support" ON)
-option(CP2K_USE_LIBXC "Enable libxc support" ON)
+option(CP2K_USE_SPGLIB "Enable spglib support" OFF)
+option(CP2K_USE_LIBXC "Enable libxc support" OFF)
 option(CP2K_USE_LIBTORCH "Enable libtorch support" OFF)
 option(CP2K_USE_STATIC_BLAS "Link against static version of BLAS/LAPACK" OFF)
 option(CP2K_USE_SPLA
        "Use SPLA offloading gemm feature to the GPU if it is beneficial. " OFF)
 option(CP2K_USE_METIS "enable metis library support" OFF)
-option(CP2K_USE_LIBXSMM "Use libxsmm for small gemms (supports x86 platforms)"
-       ON)
-option(CP2K_USE_DLA-Future "Use DLA-Future fr cholesky and / or eigensolver" OFF)
+option(CP2K_USE_LIBXSMM "Use libxsmm for small gemms (supports x86 platforms)" OFF)
+option(CP2K_USE_DLAF "Use DLA-Future fr cholesky and / or eigensolver" OFF)
+option(CP2K_BUILD_DBCSR "Duild dbcsr at the same time than cp2k." OFF)
 
 cmake_dependent_option(CP2K_ENABLE_ELPA_OPENMP_SUPPORT
-                       "Enable elpa openmp support" OFF "CP2K_USE_ELPA" OFF)
+                       "Enable elpa openmp support" ON "CP2K_USE_ELPA" OFF)
 cmake_dependent_option(CP2K_ENABLE_FFTW3_OPENMP_SUPPORT
                        "Enable FFTW openmp support" ON "CP2K_USE_FFTW3" OFF)
 cmake_dependent_option(CP2K_ENABLE_FFTW3_THREADS_SUPPORT
                        "Enable FFTW THREADS support" OFF "CP2K_USE_FFTW3" OFF)
+cmake_dependent_option(CP2K_ENABLE_F08_MPI "Enable MPI Fortran 2008 interface"
+                       OFF "CP2K_USE_MPI" OFF)
+
+cmake_dependent_option(
+  DBCSR_USE_ACCEL
+  "Enable dbcsr gpu support. It will be turned on only if cp2k gpu support is on"
+  ON
+  "CP2K_BUILD_DBCSR"
+  OFF)
+cmake_dependent_option(DBCSR_USE_OPENMP "Enable dbcsr openmp support" OFF
+                       "CP2K_BUILD_DBCSR" OFF)
+cmake_dependent_option(
+  DBCSR_USE_G2G
+  "Enable dbcsr gpu-gpu communication support. It will be turned on only if cp2k gpu support is on"
+  ON
+  "CP2K_BUILD_DBCSR"
+  OFF)
+
+set(CP2K_BLAS_VENDOR
+    "auto"
+    CACHE STRING "Blas library for computations on host")
 
 set(CP2K_SCALAPACK_VENDOR_LIST "MKL" "SCI" "GENERIC")
 set(CP2K_SCALAPACK_VENDOR
@@ -129,7 +157,7 @@ set(CP2K_SUPPORTED_HIP_ARCHITECTURES
     Mi50
     Mi100
     Mi210
-    Mi250X
+    Mi250
     K20X
     K40
     K80
@@ -152,6 +180,9 @@ set(CP2K_USE_ACCEL
 
 set_property(CACHE CP2K_USE_ACCEL
              PROPERTY STRINGS ${CP2K_SUPPORTED_ACCELERATION_TARGETS})
+
+cmake_dependent_option(CP2K_USE_NVHPC OFF "Enable Nvidia NVHPC kit"
+                       "(NOT CP2K_USE_ACCEL MATCHES \"CUDA\")" OFF)
 
 cmake_dependent_option(
   CP2K_USE_SPLA_GEMM_OFFLOADING ON
@@ -185,7 +216,66 @@ cmake_dependent_option(
   OFF)
 cmake_dependent_option(
   CP2K_DBCSR_CPU_ONLY "Use DBCSR compiled without GPU support." OFF
-  "CP2K_DEBUG_MODE" OFF)
+  "(NOT CP2K_USE_ACCEL MATCHES \"NONE\") AND (CP2K_DEBUG_MODE)" OFF)
+cmake_dependent_option(DBCSR_USE_OPENMP "Enable openmp support in DBCSR" ON
+                       "CP2K_BUILD_DBCSR" OFF)
+# ##############################################################################
+# specific variables for the regtests. Binaries will be created with an
+# extension               #
+# ##############################################################################
+
+set(__cp2k_ext "")
+set(__cp2k_cmake_name "")
+
+if(CP2K_USE_MPI)
+  set(__cp2k_ext "psmp")
+else()
+  set(__cp2k_ext "ssmp")
+endif()
+
+set(__cp2k_cmake_name "cmake_build_cpu")
+
+if(CP2K_USE_ACCEL MATCHES "CUDA")
+  set(__cp2k_cmake_name "cmake_build_cuda")
+endif()
+
+if(CP2K_USE_ACCEL MATCHES "HIP")
+  set(__cp2k_cmake_name "cmake_build_hip")
+endif()
+
+# we can run the src consistency checks without actually searching for any
+# dependencies.
+
+if(CP2K_ENABLE_CONSISTENCY_CHECKS)
+  add_subdirectory(src)
+  # it is better to simply rm -Rf build but if someone wants to do something
+  # like
+  #
+  # cmake -DCP2K_ENABLE_CONSISTENCY_CHECKS=ON .. cmake ..
+  #
+  # he/she can
+
+  set(CP2K_ENABLE_CONSISTENCY_CHECKS
+      OFF
+      CACHE BOOL "" FORCE)
+  return()
+endif()
+
+# for the time being I change the bin directory to point to
+# ../exe/build-cmake-{cuda,hip,cpu} when we want to run the regtests afterwards.
+# This solution does not require modifying the regtests scripts at all and cmake
+# does not mind this change when we want to install cp2k with a command like
+# `make install`
+if(CP2K_ENABLE_REGTESTS)
+  set(CMAKE_RUNTIME_OUTPUT_DIRECTORY
+      "${cp2k_SOURCE_DIR}/exe/${__cp2k_cmake_name}"
+      CACHE PATH "Single output directory for building all executables.")
+else()
+  set(CMAKE_RUNTIME_OUTPUT_DIRECTORY
+      ${cp2k_BINARY_DIR}/bin
+      CACHE PATH "Single output directory for building all executables.")
+
+endif()
 
 # Python
 #
@@ -228,7 +318,7 @@ add_custom_target(
 
 # MPI
 
-if (CP2K_USE_MPI)
+if(CP2K_USE_MPI)
   get_property(REQUIRED_MPI_COMPONENTS GLOBAL PROPERTY ENABLED_LANGUAGES)
   list(REMOVE_ITEM REQUIRED_MPI_COMPONENTS CUDA) # CUDA does not have an MPI
   # component
@@ -240,28 +330,47 @@ if (CP2K_USE_MPI)
     MPI
     COMPONENTS ${REQUIRED_MPI_COMPONENTS}
     REQUIRED)
-  
+
   if(NOT MPI_Fortran_HAVE_F90_MODULE)
     message(
       FATAL_ERROR
-      "\
+        "\
 The listed MPI implementation does not provide the required mpi.mod interface. \
 When using the GNU compiler in combination with Intel MPI, please use the \
 Intel MPI compiler wrappers. Check the INSTALL.md for more information.")
   endif()
   if("${MPI_Fortran_LIBRARY_VERSION_STRING}" MATCHES "Open MPI v2.1"
-      OR "${MPI_Fortran_LIBRARY_VERSION_STRING}" MATCHES "Open MPI v3.1")
+     OR "${MPI_Fortran_LIBRARY_VERSION_STRING}" MATCHES "Open MPI v3.1")
     message(
       WARNING
-      "RMA with ${MPI_Fortran_LIBRARY_VERSION_STRING} is not supported due to issues with its implementation."
-      " Please use a newer version of OpenMPI or switch to MPICH if you plan on using MPI-RMA."
+        "RMA with ${MPI_Fortran_LIBRARY_VERSION_STRING} is not supported due to issues with its implementation."
+        " Please use a newer version of OpenMPI or switch to MPICH if you plan on using MPI-RMA."
     )
   endif()
 else()
-  if (CP2K_USE_SIRIUS OR CP2K_USE_COSMA OR CP2K_USE_SPLA OR CP2K_USE_ELPA OR CP2K_USE_METIS OR CP2K_USE_PLUMED OR CP2K_USE_PEXSI OR CP2K_USE_QUIP)
-    message(WARNING "SIRIUS, COSMA, SPLA, ELPA, METIS, PLUMED, PEXSI and QUIP require MPI support. Either change -DCP2K_USE_MPI to ON or turn the following dependencies off")
-    foreach(__libs SIRIUS COSMA SPLA ELPA METIS PLUMED PEXSI QUIP)
-      if (CP2K_USE_${__libs})
+  if(CP2K_USE_SIRIUS
+     OR CP2K_USE_COSMA
+     OR CP2K_USE_SPLA
+     OR CP2K_USE_ELPA
+     OR CP2K_USE_METIS
+     OR CP2K_USE_PLUMED
+     OR CP2K_USE_PEXSI
+     OR CP2K_USE_QUIP)
+    message(
+      WARNING
+        "SIRIUS, COSMA, SPLA, ELPA, METIS, PLUMED, PEXSI and QUIP require MPI support. Either change -DCP2K_USE_MPI to ON or turn the following dependencies off"
+    )
+    foreach(
+      __libs
+      sirius
+      COSMA
+      SPLA
+      ELPA
+      METIS
+      PLUMED
+      PEXSI
+      QUIP)
+      if(CP2K_USE_${__libs})
         message(WARNING " - ${__libs}")
       endif()
     endforeach()
@@ -280,8 +389,8 @@ endif()
 
 # in practice it is always for any decent configuration. But I add a flags to
 # turn it off
-if (CP2K_USE_MPI)
-   find_package(SCALAPACK REQUIRED)
+if(CP2K_USE_MPI)
+  find_package(SCALAPACK REQUIRED)
 endif()
 
 # CUDA / ROCM easy for cuda a moving target for hip
@@ -296,7 +405,7 @@ if((CP2K_USE_ACCEL MATCHES CUDA) OR (CP2K_USE_ACCEL MATCHES HIP))
   set(CP2K_GPU_ARCH_NUMBER_Mi50 gfx906)
   set(CP2K_GPU_ARCH_NUMBER_Mi100 gfx908)
   set(CP2K_GPU_ARCH_NUMBER_Mi200 gfx90a)
-  set(CP2K_GPU_ARCH_NUMBER_Mi250X gfx90a)
+  set(CP2K_GPU_ARCH_NUMBER_Mi250 gfx90a)
 endif()
 
 set(CP2K_USE_HIP OFF)
@@ -310,7 +419,11 @@ if(CP2K_USE_ACCEL MATCHES "CUDA")
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -allow-unsupported-compiler")
 
   enable_language(CUDA)
-  find_package(CUDAToolkit REQUIRED)
+  if(CP2K_USE_NVHPC)
+    find_package(NVHPC REQUIRED COMPONENTS CUDA MATH HOSTUTILS NCCL)
+  else()
+    find_package(CUDAToolkit REQUIRED)
+  endif()
 
   list(FIND CP2K_SUPPORTED_CUDA_ARCHITECTURES ${CP2K_WITH_GPU}
        CP2K_GPU_SUPPORTED)
@@ -322,13 +435,10 @@ if(CP2K_USE_ACCEL MATCHES "CUDA")
     )
   endif()
 
-  # set cuda architecture number and compilation flags. Taken from dbcsr
-  set(CP2K_ACC_ARCH_NUMBER ${CP2K_GPU_ARCH_NUMBER_${CP2K_WITH_GPU}})
-  set(CMAKE_CUDA_ARCHITECTURES ${CP2K_ACC_ARCH_NUMBER})
-  set(CUDA_ARCHITECTURES ${CP2K_ACC_ARCH_NUMBER})
+  set(CMAKE_CUDA_ARCHITECTURES ${CP2K_GPU_ARCH_NUMBER_${CP2K_WITH_GPU}})
 
   message(STATUS "GPU target architecture: " ${CP2K_WITH_GPU})
-  message(STATUS "GPU architecture number: " ${CP2K_ACC_ARCH_NUMBER})
+  message(STATUS "GPU architecture number: " ${CMAKE_CUDA_ARCHITECTURES})
   message(STATUS "GPU profiling enabled: " ${CP2K_WITH_CUDA_PROFILING})
 
   if(WITH_CUDA_PROFILING)
@@ -345,7 +455,6 @@ if(CP2K_USE_ACCEL MATCHES "CUDA")
 elseif(CP2K_USE_ACCEL MATCHES "HIP")
   enable_language(HIP)
   # Find hip
-  find_package(hip REQUIRED IMPORTED CONFIG)
   find_package(hipfft REQUIRED IMPORTED CONFIG)
   find_package(hipblas REQUIRED IMPORTED CONFIG)
 
@@ -360,11 +469,48 @@ elseif(CP2K_USE_ACCEL MATCHES "HIP")
     set(HIP_RELEASE_OPTIONS "-O0 -g --std=c++11")
   endif()
 
-  set(CP2K_ACC_ARCH_NUMBER ${CP2K_GPU_ARCH_NUMBER_${CP2K_WITH_GPU}})
+  set(CMAKE_HIP_ARCGITECTURES "${CP2K_GPU_ARCH_NUMBER_${CP2K_WITH_GPU}}")
   set(CP2K_USE_HIP ON)
 endif()
 
-find_package(DBCSR 2.4 REQUIRED)
+# CP2K options are prefixed with CP2K_ (namespacing) while dbcsr does not.
+
+set(USE_ACCEL "")
+set(BLAS_LIBRARIES "")
+set(LAPACK_LIBRARIES "")
+set(USE_MPI ${CP2K_USE_MPI})
+set(WITH_EXAMPLES OFF)
+set(BUILD_TESTING OFF)
+set(WITH_C_API OFF)
+set(USE_SMM "")
+set(USE_OPENMP ON)
+
+if(NOT CP2K_BUILD_DBCSR)
+  find_package(DBCSR 2.4 REQUIRED)
+else()
+  check_git_submodule(dbcsr "${CMAKE_SOURCE_DIR}/exts/dbcsr")
+  if(DBCSR_USE_ACCEL AND CP2K_USE_ACCEL MATCHES "CUDA|HIP")
+    if(CP2K_USE_ACCEL MATCHES "CUDA")
+      set(USE_ACCEL "cuda")
+    endif()
+    if(CP2K_USE_ACCEL MATCHES "HIP")
+      set(USE_ACCEL "hip")
+    endif()
+    set(WITH_GPU "${CP2K_WITH_GPU}")
+    set(ACC_ARCH_NUMBER "${CP2K_GPU_ARCH_NUMBER_${CP2K_WITH_GPU}}")
+  endif()
+  set(BLAS_LIBRARIES "${CP2K_BLAS_LINK_LIBRARIES}")
+  set(LAPACK_LIBRARIES "${CP2K_LAPACK_LINK_LIBRARIES}")
+  set(USE_MPI ${CP2K_USE_MPI})
+  set(WITH_C_API OFF)
+  if(CP2K_USE_LIBXSMM)
+    set(USE_SMM "libxsmm")
+  endif()
+  set(WITH_G2G ${DBCSR_WITH_G2G})
+  if(DBCSR_USE_OPENMP)
+    set(USE_OPENMP ON)
+  endif()
+endif()
 
 # =================================================================================================
 # PACKAGE DISCOVERY (compiler configuration can impact package discovery)
@@ -381,20 +527,14 @@ if(CP2K_USE_LIBXC)
 endif()
 
 if(CP2K_USE_COSMA)
-  find_package(cosma REQUIRED HINTS "${COSMA_ROOT}" "$ENV(COSMA_ROOT)")
-  get_target_property(COSMA_INCLUDE_DIRS cosma::cosma
-                      INTERFACE_INCLUDE_DIRECTORIES)
-  if(NOT COSMA_INCLUDE_DIRS)
-    set(COSMA_INCLUDE_DIRS "/usr/include;/usr/include/cosma")
-  endif()
+  find_package(cosma REQUIRED)
 
   # check that cosma::cosma_pxgemm and cosma::cosma_prefixed_pxgemm exist
   if(NOT TARGET cosma::cosma_pxgemm OR NOT TARGET cosma::cosma_prefixed_pxgemm)
-    message(ERROR_ERROR
-            " COSMA needs to be build with scalapack offloading support")
     message(
       FATAL_ERROR
-        " COSTA_SCALAPACK and COSMA_SCALAPACK should probably be set properly")
+        " COSMA needs to be build with scalapack offloading support. COSTA_SCALAPACK and COSMA_SCALAPACK should probably be set properly"
+    )
   endif()
 endif()
 
@@ -445,7 +585,6 @@ if(CP2K_USE_LIBINT2)
 endif()
 
 # spglib
-
 if(CP2K_USE_SPGLIB)
   find_package(LibSPG REQUIRED)
 endif()
@@ -470,11 +609,6 @@ endif()
 
 if(CP2K_USE_SIRIUS)
   find_package(sirius REQUIRED)
-  get_target_property(SIRIUS_INCLUDE_DIRS sirius::sirius
-                      INTERFACE_INCLUDE_DIRECTORIES)
-  if(NOT SIRIUS_INCLUDE_DIRS)
-    set(SIRIUS_INCLUDE_DIRS "/usr/include;/usr/include/sirius")
-  endif()
 endif()
 
 if(CP2K_USE_SUPERLU)
@@ -502,6 +636,13 @@ if(CP2K_USE_LIBTORCH)
   find_package(Torch REQUIRED)
 endif()
 
+if(CP2K_USE_MPI_F08 AND NOT MPI_Fortran_HAVE_F08_MODULE)
+  message(
+    FATAL_ERROR
+      "The Fortran 2008 interface is not supported by the MPI implementation found by cmake."
+  )
+endif()
+
 # OPTION HANDLING
 
 # make sure that the default build type is RELEASE
@@ -525,15 +666,18 @@ endif()
 include(CompilerConfiguration)
 include(CheckCompilerSupport)
 
+if(CP2K_BUILD_DBCSR)
+  add_subdirectory(exts/dbcsr/src)
+  add_library(DBCSR::dbcsr ALIAS dbcsr)
+endif()
+
 # subdirectories
 add_subdirectory(src)
-
-include(CustomTargets)
 
 include(GNUInstallDirs)
 
 get_target_property(CP2K_LIBS cp2k_link_libs INTERFACE_LINK_LIBRARIES)
-configure_file(cp2k.pc.in cp2k.pc @ONLY)
+configure_file(cmake/cp2k.pc.in cp2k.pc @ONLY)
 
 if (TARGET CP2K::BLAS::OpenBLAS::openblas)
   message(WARNING "It works")
@@ -561,15 +705,26 @@ message(STATUS "   - include directories : " ${CP2K_BLAS_INCLUDE_DIRS}
 message(STATUS "   - libraries :           " ${CP2K_BLAS_LINK_LIBRARIES} " "
                ${CP2K_LAPACK_LINK_LIBRARIES})
 
-if (CP2K_USE_MPI)
-message(STATUS " ")
-message(STATUS "- MPI")
-message(STATUS "   - include directories : " ${MPI_INCLUDE_DIRS})
-message(STATUS "   - libraries :           " ${MPI_LIBRARIES})
+if(CP2K_USE_MPI)
+  message(STATUS " ")
+  message(STATUS "- MPI")
+  message(STATUS "   - include directories : " ${MPI_INCLUDE_DIRS})
+  message(STATUS "   - libraries :           " ${MPI_LIBRARIES})
 
-message(STATUS " ")
-message(STATUS "- SCALAPACK:")
-message(STATUS "     - libraries : " ${CP2K_SCALAPACK_LINK_LIBRARIES})
+  if(CP2K_USE_MPI_F08)
+    message(STATUS "   - MPI_08 :              ON")
+  endif()
+
+  if(MPI_Fortran_HAVE_F08_MODULE AND NOT CP2K_USE_MPI_F08)
+    message(
+      STATUS
+        "  - MPI_08 is supposed by MPI but turned off by default. To use it add -DCP2K_USE_MPI_F08=ON to cmake"
+    )
+  endif()
+
+  message(STATUS " ")
+  message(STATUS "- SCALAPACK:")
+  message(STATUS "     - libraries : " ${CP2K_SCALAPACK_LINK_LIBRARIES})
 endif()
 
 message(STATUS " - Hardware Acceleration:")
@@ -628,7 +783,10 @@ if(CP2K_USE_LIBXSMM)
   message(STATUS " ")
   message(STATUS "- libxsmm")
   message(STATUS "   - include directories : " ${CP2K_LIBXSMM_INCLUDE_DIRS})
-  message(STATUS "   - libraries :           ${CP2K_LIBXSMMEXT_LINK_LIBRARIES};${CP2K_LIBXSMMF_LINK_LIBRARIES}")
+  message(
+    STATUS
+      "   - libraries :           ${CP2K_LIBXSMMEXT_LINK_LIBRARIES};${CP2K_LIBXSMMF_LINK_LIBRARIES}"
+  )
 endif()
 
 if(CP2K_USE_SPLA)
@@ -724,7 +882,7 @@ message(
 
 message(STATUS " List of dependencies not included in this build :")
 
-if (NOT CP2K_USE_MPI)
+if(NOT CP2K_USE_MPI)
   message(STATUS "   - MPI")
 endif()
 
@@ -753,7 +911,7 @@ if(NOT CP2K_USE_ELPA)
 endif()
 
 if(NOT CP2K_USE_PLUMMED)
-  message(STATUS "   - PLUMMED")
+  message(STATUS "   - PLUMED")
 endif()
 
 if(NOT CP2K_USE_QUIP)
@@ -792,7 +950,31 @@ if(NOT CP2K_USE_LIBTORCH)
   message(STATUS "   - libtorch")
 endif()
 
-message(
-  STATUS "                                                                    ")
-message(
-  STATUS "                                                                    ")
+if(CP2K_ENABLE_REGTESTS)
+  message(
+    STATUS
+      "\n\n"
+      "To run the regtests you need to run the following commands\n"
+      "\n\n cd ..\n"
+      "tools/regtesting/do_regtest.py -cp2kdir . -nobuild -version ${__cp2k_cmake_exts} -arch ${__cp2k_cmake_name}\n\n"
+  )
+endif()
+
+# files needed for cmake
+
+write_basic_package_version_file(
+  "${PROJECT_BINARY_DIR}/cp2kConfigVersion.cmake"
+  VERSION "${CP2K_VERSION}"
+  COMPATIBILITY SameMajorVersion)
+
+configure_file("${PROJECT_SOURCE_DIR}/cmake/cp2kConfig.cmake.in"
+               "${PROJECT_BINARY_DIR}/cp2kConfig.cmake" @ONLY)
+install(FILES "${PROJECT_BINARY_DIR}/cp2kConfig.cmake"
+              "${PROJECT_BINARY_DIR}/cp2kConfigVersion.cmake"
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/cp2k")
+
+install(
+  DIRECTORY "${PROJECT_SOURCE_DIR}/cmake"
+  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/cp2k"
+  FILES_MATCHING
+  PATTERN "*.cmake")

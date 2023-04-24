@@ -19,6 +19,8 @@ MODULE energy_corrections
                                               get_atomic_kind
    USE basis_set_types,                 ONLY: get_gto_basis_set,&
                                               gto_basis_set_type
+   USE bibliography,                    ONLY: Belleflamme2023,&
+                                              cite_reference
    USE cell_types,                      ONLY: cell_type,&
                                               pbc
    USE core_ppl,                        ONLY: build_core_ppl
@@ -51,7 +53,6 @@ MODULE energy_corrections
                                               cp_print_key_finished_output,&
                                               cp_print_key_should_output,&
                                               cp_print_key_unit_nr
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE cp_result_methods,               ONLY: cp_results_erase,&
                                               put_results
    USE cp_result_types,                 ONLY: cp_result_type
@@ -97,7 +98,7 @@ MODULE energy_corrections
                                               dp
    USE mao_basis,                       ONLY: mao_generate_basis
    USE mathlib,                         ONLY: det_3x3
-   USE message_passing,                 ONLY: mp_sum
+   USE message_passing,                 ONLY: mp_para_env_type
    USE molecule_types,                  ONLY: molecule_type
    USE moments_utils,                   ONLY: get_reference_point
    USE particle_types,                  ONLY: particle_type
@@ -180,10 +181,8 @@ MODULE energy_corrections
    USE virial_methods,                  ONLY: one_third_sum_diag,&
                                               write_stress_tensor,&
                                               write_stress_tensor_components
-   USE virial_types,                    ONLY: cp_virial,&
-                                              symmetrize_virial,&
-                                              virial_type,&
-                                              zero_virial
+   USE virial_types,                    ONLY: symmetrize_virial,&
+                                              virial_type
    USE voronoi_interface,               ONLY: entry_voronoi_or_bqb
 #include "./base/base_uses.f90"
 
@@ -194,9 +193,6 @@ MODULE energy_corrections
 ! *** Global parameters ***
 
    CHARACTER(len=*), PARAMETER, PRIVATE :: moduleN = 'energy_corrections'
-
-   LOGICAL, PARAMETER                   :: debug_forces = .TRUE.
-   LOGICAL, PARAMETER                   :: debug_stress = .TRUE.
 
    PUBLIC :: energy_correction
 
@@ -230,11 +226,13 @@ CONTAINS
       CALL timeset(routineN, handle)
 
       logger => cp_get_default_logger()
-      IF (logger%para_env%ionode) THEN
+      IF (logger%para_env%is_source()) THEN
          unit_nr = cp_logger_get_default_unit_nr(logger, local=.TRUE.)
       ELSE
          unit_nr = -1
       END IF
+
+      CALL cite_reference(Belleflamme2023)
 
       NULLIFY (ec_env)
       CALL get_qs_env(qs_env, ec_env=ec_env)
@@ -323,6 +321,7 @@ CONTAINS
       INTEGER, INTENT(IN)                                :: unit_nr
 
       INTEGER                                            :: ispin, nspins
+      LOGICAL                                            :: debug_f
       REAL(KIND=dp)                                      :: exc
       TYPE(dft_control_type), POINTER                    :: dft_control
       TYPE(pw_env_type), POINTER                         :: pw_env
@@ -380,6 +379,8 @@ CONTAINS
 
       IF (calculate_forces) THEN
 
+         debug_f = ec_env%debug_forces .OR. ec_env%debug_stress
+
          CALL ec_disp(qs_env, ec_env, calculate_forces=.TRUE.)
 
          SELECT CASE (ec_env%energy_functional)
@@ -434,7 +435,8 @@ CONTAINS
                              zehartree=ec_env%ehartree, &
                              zexc=ec_env%exc, &
                              zexc_aux_fit=ec_env%exc_aux_fit, &
-                             p_env=ec_env%p_env)
+                             p_env=ec_env%p_env, &
+                             debug=debug_f)
 
          CALL ec_properties(qs_env, ec_env)
 
@@ -601,7 +603,8 @@ CONTAINS
       CHARACTER(LEN=*), PARAMETER :: routineN = 'ec_dc_build_ks_matrix_force'
 
       INTEGER                                            :: handle, i, iounit, ispin, natom, nspins
-      LOGICAL                                            :: do_adiabatic_rescaling, do_hfx, &
+      LOGICAL                                            :: debug_forces, debug_stress, &
+                                                            do_adiabatic_rescaling, do_hfx, &
                                                             use_virial
       REAL(dp)                                           :: ehartree, eovrl, exc, fconv
       REAL(dp), ALLOCATABLE, DIMENSION(:, :)             :: ftot
@@ -610,10 +613,10 @@ CONTAINS
       TYPE(atomic_kind_type), DIMENSION(:), POINTER      :: atomic_kind_set
       TYPE(cell_type), POINTER                           :: cell
       TYPE(cp_logger_type), POINTER                      :: logger
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_p_type)                                 :: scrm
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: dbcsr_work, matrix_ks, matrix_p, matrix_s
       TYPE(dft_control_type), POINTER                    :: dft_control
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(neighbor_list_set_p_type), DIMENSION(:), &
          POINTER                                         :: sab_orb
       TYPE(pw_env_type), POINTER                         :: pw_env
@@ -633,8 +636,11 @@ CONTAINS
 
       CALL timeset(routineN, handle)
 
+      debug_forces = ec_env%debug_forces
+      debug_stress = ec_env%debug_stress
+
       logger => cp_get_default_logger()
-      IF (logger%para_env%ionode) THEN
+      IF (logger%para_env%is_source()) THEN
          iounit = cp_logger_get_default_unit_nr(logger, local=.TRUE.)
       ELSE
          iounit = -1
@@ -697,7 +703,7 @@ CONTAINS
 
          IF (debug_stress) THEN
             stdeb = fconv*(h_stress/REAL(para_env%num_pe, dp))
-            CALL mp_sum(stdeb, para_env%group)
+            CALL para_env%sum(stdeb)
             IF (iounit > 0) WRITE (UNIT=iounit, FMT="(T2,A,T41,2(1X,ES19.11))") &
                'STRESS| GREEN 1st V_H[n_in]*n_in  ', one_third_sum_diag(stdeb), det_3x3(stdeb)
          END IF
@@ -726,12 +732,12 @@ CONTAINS
       CALL integrate_v_core_rspace(v_hartree_rspace, qs_env)
       IF (debug_forces) THEN
          fodeb(1:3) = force(1)%rho_core(1:3, 1) - fodeb(1:3)
-         CALL mp_sum(fodeb, para_env%group)
+         CALL para_env%sum(fodeb)
          IF (iounit > 0) WRITE (iounit, "(T3,A,T33,3F16.8)") "DEBUG:: Vtot*dncore", fodeb
       END IF
       IF (debug_stress .AND. use_virial) THEN
          stdeb = fconv*(virial%pv_ehartree - stdeb)
-         CALL mp_sum(stdeb, para_env%group)
+         CALL para_env%sum(stdeb)
          IF (iounit > 0) WRITE (UNIT=iounit, FMT="(T2,A,T41,2(1X,ES19.11))") &
             'STRESS| Vtot*dncore', one_third_sum_diag(stdeb), det_3x3(stdeb)
       END IF
@@ -808,12 +814,12 @@ CONTAINS
 
       IF (debug_forces) THEN
          fodeb(1:3) = force(1)%rho_elec(1:3, 1) - fodeb(1:3)
-         CALL mp_sum(fodeb, para_env%group)
+         CALL para_env%sum(fodeb)
          IF (iounit > 0) WRITE (iounit, "(T3,A,T33,3F16.8)") "DEBUG:: Pout*dVhxc ", fodeb
       END IF
       IF (debug_stress .AND. use_virial) THEN
          stdeb = fconv*(virial%pv_virial - stdeb)
-         CALL mp_sum(stdeb, para_env%group)
+         CALL para_env%sum(stdeb)
          IF (iounit > 0) WRITE (UNIT=iounit, FMT="(T2,A,T41,2(1X,ES19.11))") &
             'STRESS| INT Pout*dVhxc   ', one_third_sum_diag(stdeb), det_3x3(stdeb)
       END IF
@@ -836,12 +842,12 @@ CONTAINS
 
          IF (debug_forces) THEN
             fodeb(1:3) = force(1)%rho_elec(1:3, 1) - fodeb(1:3)
-            CALL mp_sum(fodeb, para_env%group)
+            CALL para_env%sum(fodeb)
             IF (iounit > 0) WRITE (iounit, "(T3,A,T33,3F16.8)") "DEBUG:: Pout*dVhxc_tau ", fodeb
          END IF
          IF (debug_stress .AND. use_virial) THEN
             stdeb = fconv*(virial%pv_virial - stdeb)
-            CALL mp_sum(stdeb, para_env%group)
+            CALL para_env%sum(stdeb)
             IF (iounit > 0) WRITE (UNIT=iounit, FMT="(T2,A,T41,2(1X,ES19.11))") &
                'STRESS| INT Pout*dVhxc_tau   ', one_third_sum_diag(stdeb), det_3x3(stdeb)
          END IF
@@ -996,12 +1002,12 @@ CONTAINS
       CALL calculate_ecore_overlap(qs_env, para_env, .TRUE., E_overlap_core=eovrl)
       IF (debug_forces) THEN
          fodeb(1:3) = force(1)%core_overlap(1:3, 1) - fodeb(1:3)
-         CALL mp_sum(fodeb, para_env%group)
+         CALL para_env%sum(fodeb)
          IF (iounit > 0) WRITE (iounit, "(T3,A,T33,3F16.8)") "DEBUG:: CoreOverlap", fodeb
       END IF
       IF (debug_stress .AND. use_virial) THEN
          stdeb = fconv*(stdeb - virial%pv_ecore_overlap)
-         CALL mp_sum(stdeb, para_env%group)
+         CALL para_env%sum(stdeb)
          IF (iounit > 0) WRITE (UNIT=iounit, FMT="(T2,A,T41,2(1X,ES19.11))") &
             'STRESS| CoreOverlap   ', one_third_sum_diag(stdeb), det_3x3(stdeb)
       END IF
@@ -1012,7 +1018,7 @@ CONTAINS
          CALL total_qs_force(ftot, force, atomic_kind_set)
          fodeb(1:3) = ftot(1:3, 1)
          DEALLOCATE (ftot)
-         CALL mp_sum(fodeb, para_env%group)
+         CALL para_env%sum(fodeb)
          IF (iounit > 0) WRITE (iounit, "(T3,A,T33,3F16.8)") "DEBUG:: Force Explicit", fodeb
       END IF
 
@@ -1055,23 +1061,22 @@ CONTAINS
          ! apply volume terms immediately
          BLOCK
             TYPE(virial_type) :: virdeb
-            CALL zero_virial(virdeb)
-            CALL cp_virial(virial, virdeb)
+            virdeb = virial
 
-            CALL mp_sum(virdeb%pv_overlap, para_env%group)
-            CALL mp_sum(virdeb%pv_ekinetic, para_env%group)
-            CALL mp_sum(virdeb%pv_ppl, para_env%group)
-            CALL mp_sum(virdeb%pv_ppnl, para_env%group)
-            CALL mp_sum(virdeb%pv_ecore_overlap, para_env%group)
-            CALL mp_sum(virdeb%pv_ehartree, para_env%group)
-            CALL mp_sum(virdeb%pv_exc, para_env%group)
-            CALL mp_sum(virdeb%pv_exx, para_env%group)
-            CALL mp_sum(virdeb%pv_vdw, para_env%group)
-            CALL mp_sum(virdeb%pv_mp2, para_env%group)
-            CALL mp_sum(virdeb%pv_nlcc, para_env%group)
-            CALL mp_sum(virdeb%pv_gapw, para_env%group)
-            CALL mp_sum(virdeb%pv_lrigpw, para_env%group)
-            CALL mp_sum(virdeb%pv_virial, para_env%group)
+            CALL para_env%sum(virdeb%pv_overlap)
+            CALL para_env%sum(virdeb%pv_ekinetic)
+            CALL para_env%sum(virdeb%pv_ppl)
+            CALL para_env%sum(virdeb%pv_ppnl)
+            CALL para_env%sum(virdeb%pv_ecore_overlap)
+            CALL para_env%sum(virdeb%pv_ehartree)
+            CALL para_env%sum(virdeb%pv_exc)
+            CALL para_env%sum(virdeb%pv_exx)
+            CALL para_env%sum(virdeb%pv_vdw)
+            CALL para_env%sum(virdeb%pv_mp2)
+            CALL para_env%sum(virdeb%pv_nlcc)
+            CALL para_env%sum(virdeb%pv_gapw)
+            CALL para_env%sum(virdeb%pv_lrigpw)
+            CALL para_env%sum(virdeb%pv_virial)
             CALL symmetrize_virial(virdeb)
 
             ! apply stress-tensor 1st terms
@@ -1085,7 +1090,7 @@ CONTAINS
                ! There should be a more elegant solution to that ...
             END DO
 
-            CALL mp_sum(sttot, para_env%group)
+            CALL para_env%sum(sttot)
             stdeb = fconv*(virdeb%pv_virial - sttot)
             IF (iounit > 0) WRITE (UNIT=iounit, FMT="(T2,A,T41,2(1X,ES19.11))") &
                'STRESS| Explicit electronic stress   ', one_third_sum_diag(stdeb), det_3x3(stdeb)
@@ -1381,16 +1386,17 @@ CONTAINS
 
       INTEGER                                            :: handle, iounit, nder, nimages
       INTEGER, DIMENSION(:, :, :), POINTER               :: cell_to_index
-      LOGICAL                                            :: calculate_forces, use_virial
+      LOGICAL                                            :: calculate_forces, debug_forces, &
+                                                            debug_stress, use_virial
       REAL(KIND=dp)                                      :: eps_ppnl, fconv
       REAL(KIND=dp), DIMENSION(3)                        :: fodeb
       REAL(KIND=dp), DIMENSION(3, 3)                     :: stdeb, sttot
       TYPE(atomic_kind_type), DIMENSION(:), POINTER      :: atomic_kind_set
       TYPE(cell_type), POINTER                           :: cell
       TYPE(cp_logger_type), POINTER                      :: logger
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_p_type), DIMENSION(:, :), POINTER       :: scrm
       TYPE(dft_control_type), POINTER                    :: dft_control
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(neighbor_list_set_p_type), DIMENSION(:), &
          POINTER                                         :: sab_orb, sac_ppl, sap_ppnl
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
@@ -1401,8 +1407,11 @@ CONTAINS
 
       CALL timeset(routineN, handle)
 
+      debug_forces = ec_env%debug_forces
+      debug_stress = ec_env%debug_stress
+
       logger => cp_get_default_logger()
-      IF (logger%para_env%ionode) THEN
+      IF (logger%para_env%is_source()) THEN
          iounit = cp_logger_get_default_unit_nr(logger, local=.TRUE.)
       ELSE
          iounit = -1
@@ -1470,13 +1479,13 @@ CONTAINS
 
       IF (debug_forces) THEN
          fodeb(1:3) = force(1)%overlap(1:3, 1) - fodeb(1:3)
-         CALL mp_sum(fodeb, para_env%group)
+         CALL para_env%sum(fodeb)
          IF (iounit > 0) WRITE (iounit, "(T3,A,T33,3F16.8)") "DEBUG:: Wout*dS    ", fodeb
          fodeb(1:3) = force(1)%kinetic(1:3, 1)
       END IF
       IF (debug_stress .AND. use_virial) THEN
          stdeb = fconv*(virial%pv_overlap - stdeb)
-         CALL mp_sum(stdeb, para_env%group)
+         CALL para_env%sum(stdeb)
          IF (iounit > 0) WRITE (UNIT=iounit, FMT="(T2,A,T41,2(1X,ES19.11))") &
             'STRESS| Wout*dS', one_third_sum_diag(stdeb), det_3x3(stdeb)
          stdeb = virial%pv_ekinetic
@@ -1488,12 +1497,12 @@ CONTAINS
                                 matrixkp_p=matrix_p)
       IF (debug_forces) THEN
          fodeb(1:3) = force(1)%kinetic(1:3, 1) - fodeb(1:3)
-         CALL mp_sum(fodeb, para_env%group)
+         CALL para_env%sum(fodeb)
          IF (iounit > 0) WRITE (iounit, "(T3,A,T33,3F16.8)") "DEBUG:: Pout*dT    ", fodeb
       END IF
       IF (debug_stress .AND. use_virial) THEN
          stdeb = fconv*(virial%pv_ekinetic - stdeb)
-         CALL mp_sum(stdeb, para_env%group)
+         CALL para_env%sum(stdeb)
          IF (iounit > 0) WRITE (UNIT=iounit, FMT="(T2,A,T41,2(1X,ES19.11))") &
             'STRESS| Pout*dT', one_third_sum_diag(stdeb), det_3x3(stdeb)
       END IF
@@ -1516,12 +1525,12 @@ CONTAINS
                              nimages, cell_to_index, "HARRIS")
          IF (calculate_forces .AND. debug_forces) THEN
             fodeb(1:3) = force(1)%gth_ppl(1:3, 1) - fodeb(1:3)
-            CALL mp_sum(fodeb, para_env%group)
+            CALL para_env%sum(fodeb)
             IF (iounit > 0) WRITE (iounit, "(T3,A,T33,3F16.8)") "DEBUG:: Pout*dH_PPL ", fodeb
          END IF
          IF (debug_stress .AND. use_virial) THEN
             stdeb = fconv*(virial%pv_ppl - stdeb)
-            CALL mp_sum(stdeb, para_env%group)
+            CALL para_env%sum(stdeb)
             IF (iounit > 0) WRITE (UNIT=iounit, FMT="(T2,A,T41,2(1X,ES19.11))") &
                'STRESS| Pout*dH_PPL', one_third_sum_diag(stdeb), det_3x3(stdeb)
          END IF
@@ -1539,12 +1548,12 @@ CONTAINS
                               nimages, cell_to_index, "HARRIS")
          IF (calculate_forces .AND. debug_forces) THEN
             fodeb(1:3) = force(1)%gth_ppnl(1:3, 1) - fodeb(1:3)
-            CALL mp_sum(fodeb, para_env%group)
+            CALL para_env%sum(fodeb)
             IF (iounit > 0) WRITE (iounit, "(T3,A,T33,3F16.8)") "DEBUG:: Pout*dH_PPNL", fodeb
          END IF
          IF (debug_stress .AND. use_virial) THEN
             stdeb = fconv*(virial%pv_ppnl - stdeb)
-            CALL mp_sum(stdeb, para_env%group)
+            CALL para_env%sum(stdeb)
             IF (iounit > 0) WRITE (UNIT=iounit, FMT="(T2,A,T41,2(1X,ES19.11))") &
                'STRESS| Pout*dH_PPNL', one_third_sum_diag(stdeb), det_3x3(stdeb)
          END IF
@@ -1556,12 +1565,12 @@ CONTAINS
       CALL ec_efield_local_operator(qs_env, ec_env, calculate_forces)
       IF (calculate_forces .AND. debug_forces) THEN
          fodeb(1:3) = force(1)%efield(1:3, 1) - fodeb(1:3)
-         CALL mp_sum(fodeb, para_env%group)
+         CALL para_env%sum(fodeb)
          IF (iounit > 0) WRITE (iounit, "(T3,A,T33,3F16.8)") "DEBUG:: Pout*dEfield", fodeb
       END IF
       IF (debug_stress .AND. use_virial) THEN
          stdeb = fconv*(virial%pv_virial - sttot)
-         CALL mp_sum(stdeb, para_env%group)
+         CALL para_env%sum(stdeb)
          IF (iounit > 0) WRITE (UNIT=iounit, FMT="(T2,A,T41,2(1X,ES19.11))") &
             'STRESS| Stress Pout*dHcore   ', one_third_sum_diag(stdeb), det_3x3(stdeb)
          IF (iounit > 0) WRITE (UNIT=iounit, FMT="(T2,A,T41,2(1X,ES19.11))") ' '
@@ -1590,7 +1599,7 @@ CONTAINS
       CHARACTER(LEN=*), PARAMETER :: routineN = 'ec_build_ks_matrix_force'
 
       INTEGER                                            :: handle, i, iounit, ispin, natom, nspins
-      LOGICAL                                            :: use_virial
+      LOGICAL                                            :: debug_forces, debug_stress, use_virial
       REAL(dp)                                           :: dehartree, eexc, ehartree, eovrl, exc, &
                                                             fconv
       REAL(dp), ALLOCATABLE, DIMENSION(:, :)             :: ftot
@@ -1599,10 +1608,10 @@ CONTAINS
       TYPE(atomic_kind_type), DIMENSION(:), POINTER      :: atomic_kind_set
       TYPE(cell_type), POINTER                           :: cell
       TYPE(cp_logger_type), POINTER                      :: logger
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_p_type)                                 :: scrm
       TYPE(dbcsr_p_type), DIMENSION(:, :), POINTER       :: matrix_p, matrix_s
       TYPE(dft_control_type), POINTER                    :: dft_control
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(neighbor_list_set_p_type), DIMENSION(:), &
          POINTER                                         :: sab_orb
       TYPE(pw_env_type), POINTER                         :: pw_env
@@ -1623,8 +1632,11 @@ CONTAINS
 
       CALL timeset(routineN, handle)
 
+      debug_forces = ec_env%debug_forces
+      debug_stress = ec_env%debug_stress
+
       logger => cp_get_default_logger()
-      IF (logger%para_env%ionode) THEN
+      IF (logger%para_env%is_source()) THEN
          iounit = cp_logger_get_default_unit_nr(logger, local=.TRUE.)
       ELSE
          iounit = -1
@@ -1760,7 +1772,7 @@ CONTAINS
 
          IF (debug_stress) THEN
             stdeb = fconv*(h_stress/REAL(para_env%num_pe, dp))
-            CALL mp_sum(stdeb, para_env%group)
+            CALL para_env%sum(stdeb)
             IF (iounit > 0) WRITE (UNIT=iounit, FMT="(T2,A,T41,2(1X,ES19.11))") &
                'STRESS| GREEN 1st v_H[n_in]*n_out  ', one_third_sum_diag(stdeb), det_3x3(stdeb)
          END IF
@@ -1778,7 +1790,7 @@ CONTAINS
 
          IF (debug_stress) THEN
             stdeb = -1.0_dp*fconv*virial%pv_xc
-            CALL mp_sum(stdeb, para_env%group)
+            CALL para_env%sum(stdeb)
             IF (iounit > 0) WRITE (UNIT=iounit, FMT="(T2,A,T41,2(1X,ES19.11))") &
                'STRESS| GGA 1st E_xc[Pin]   ', one_third_sum_diag(stdeb), det_3x3(stdeb)
          END IF
@@ -1826,7 +1838,7 @@ CONTAINS
 
          IF (debug_stress) THEN
             stdeb = fconv*(h_stress/REAL(para_env%num_pe, dp))
-            CALL mp_sum(stdeb, para_env%group)
+            CALL para_env%sum(stdeb)
             IF (iounit > 0) WRITE (UNIT=iounit, FMT="(T2,A,T41,2(1X,ES19.11))") &
                'STRESS| GREEN 2nd V_H[dP]*n_in  ', one_third_sum_diag(stdeb), det_3x3(stdeb)
          END IF
@@ -1848,12 +1860,12 @@ CONTAINS
       CALL integrate_v_core_rspace(vtot_rspace, qs_env)
       IF (debug_forces) THEN
          fodeb(1:3) = force(1)%rho_core(1:3, 1) - fodeb(1:3)
-         CALL mp_sum(fodeb, para_env%group)
+         CALL para_env%sum(fodeb)
          IF (iounit > 0) WRITE (iounit, "(T3,A,T33,3F16.8)") "DEBUG:: Vtot*dncore", fodeb
       END IF
       IF (debug_stress .AND. use_virial) THEN
          stdeb = fconv*(virial%pv_ehartree - stdeb)
-         CALL mp_sum(stdeb, para_env%group)
+         CALL para_env%sum(stdeb)
          IF (iounit > 0) WRITE (UNIT=iounit, FMT="(T2,A,T41,2(1X,ES19.11))") &
             'STRESS| Vtot*dncore', one_third_sum_diag(stdeb), det_3x3(stdeb)
       END IF
@@ -1883,7 +1895,7 @@ CONTAINS
       END IF
       IF (debug_stress .AND. use_virial) THEN
          stdeb = 1.0_dp*fconv*virial%pv_xc
-         CALL mp_sum(stdeb, para_env%group)
+         CALL para_env%sum(stdeb)
          IF (iounit > 0) WRITE (UNIT=iounit, FMT="(T2,A,T41,2(1X,ES19.11))") &
             'STRESS| GGA 2nd f_Hxc[dP]*Pin   ', one_third_sum_diag(stdeb), det_3x3(stdeb)
       END IF
@@ -1919,12 +1931,12 @@ CONTAINS
 
       IF (debug_forces) THEN
          fodeb(1:3) = force(1)%rho_elec(1:3, 1) - fodeb(1:3)
-         CALL mp_sum(fodeb, para_env%group)
+         CALL para_env%sum(fodeb)
          IF (iounit > 0) WRITE (iounit, "(T3,A,T33,3F16.8)") "DEBUG:: Pin*dKdrho", fodeb
       END IF
       IF (debug_stress .AND. use_virial) THEN
          stdeb = fconv*(virial%pv_virial - stdeb)
-         CALL mp_sum(stdeb, para_env%group)
+         CALL para_env%sum(stdeb)
          IF (iounit > 0) WRITE (UNIT=iounit, FMT="(T2,A,T41,2(1X,ES19.11))") &
             'STRESS| INT 2nd f_Hxc[dP]*Pin    ', one_third_sum_diag(stdeb), det_3x3(stdeb)
       END IF
@@ -1945,12 +1957,12 @@ CONTAINS
 
          IF (debug_forces) THEN
             fodeb(1:3) = force(1)%rho_elec(1:3, 1) - fodeb(1:3)
-            CALL mp_sum(fodeb, para_env%group)
+            CALL para_env%sum(fodeb)
             IF (iounit > 0) WRITE (iounit, "(T3,A,T33,3F16.8)") "DEBUG:: Pin*dKtaudtau", fodeb
          END IF
          IF (debug_stress .AND. use_virial) THEN
             stdeb = fconv*(virial%pv_virial - stdeb)
-            CALL mp_sum(stdeb, para_env%group)
+            CALL para_env%sum(stdeb)
             IF (iounit > 0) WRITE (UNIT=iounit, FMT="(T2,A,T41,2(1X,ES19.11))") &
                'STRESS| INT 2nd f_xctau[dP]*Pin    ', one_third_sum_diag(stdeb), det_3x3(stdeb)
          END IF
@@ -2021,12 +2033,12 @@ CONTAINS
 
       IF (debug_forces) THEN
          fodeb(1:3) = force(1)%rho_elec(1:3, 1) - fodeb(1:3)
-         CALL mp_sum(fodeb, para_env%group)
+         CALL para_env%sum(fodeb)
          IF (iounit > 0) WRITE (iounit, "(T3,A,T33,3F16.8)") "DEBUG:: Pout*dVhxc ", fodeb
       END IF
       IF (debug_stress .AND. use_virial) THEN
          stdeb = fconv*(virial%pv_virial - stdeb)
-         CALL mp_sum(stdeb, para_env%group)
+         CALL para_env%sum(stdeb)
          IF (iounit > 0) WRITE (UNIT=iounit, FMT="(T2,A,T41,2(1X,ES19.11))") &
             'STRESS| INT Pout*dVhxc   ', one_third_sum_diag(stdeb), det_3x3(stdeb)
       END IF
@@ -2052,7 +2064,7 @@ CONTAINS
          END DO
          IF (debug_forces) THEN
             fodeb(1:3) = force(1)%rho_elec(1:3, 1) - fodeb(1:3)
-            CALL mp_sum(fodeb, para_env%group)
+            CALL para_env%sum(fodeb)
             IF (iounit > 0) WRITE (iounit, "(T3,A,T33,3F16.8)") "DEBUG:: Pout*dVhxc_tau ", fodeb
          END IF
       END IF
@@ -2077,12 +2089,12 @@ CONTAINS
       CALL calculate_ecore_overlap(qs_env, para_env, .TRUE., E_overlap_core=eovrl)
       IF (debug_forces) THEN
          fodeb(1:3) = force(1)%core_overlap(1:3, 1) - fodeb(1:3)
-         CALL mp_sum(fodeb, para_env%group)
+         CALL para_env%sum(fodeb)
          IF (iounit > 0) WRITE (iounit, "(T3,A,T33,3F16.8)") "DEBUG:: CoreOverlap", fodeb
       END IF
       IF (debug_stress .AND. use_virial) THEN
          stdeb = fconv*(stdeb - virial%pv_ecore_overlap)
-         CALL mp_sum(stdeb, para_env%group)
+         CALL para_env%sum(stdeb)
          IF (iounit > 0) WRITE (UNIT=iounit, FMT="(T2,A,T41,2(1X,ES19.11))") &
             'STRESS| CoreOverlap   ', one_third_sum_diag(stdeb), det_3x3(stdeb)
       END IF
@@ -2093,7 +2105,7 @@ CONTAINS
          CALL total_qs_force(ftot, force, atomic_kind_set)
          fodeb(1:3) = ftot(1:3, 1)
          DEALLOCATE (ftot)
-         CALL mp_sum(fodeb, para_env%group)
+         CALL para_env%sum(fodeb)
          IF (iounit > 0) WRITE (iounit, "(T3,A,T33,3F16.8)") "DEBUG:: Force Explicit", fodeb
       END IF
 
@@ -2153,23 +2165,22 @@ CONTAINS
          ! apply volume terms immediately
          BLOCK
             TYPE(virial_type) :: virdeb
-            CALL zero_virial(virdeb)
-            CALL cp_virial(virial, virdeb)
+            virdeb = virial
 
-            CALL mp_sum(virdeb%pv_overlap, para_env%group)
-            CALL mp_sum(virdeb%pv_ekinetic, para_env%group)
-            CALL mp_sum(virdeb%pv_ppl, para_env%group)
-            CALL mp_sum(virdeb%pv_ppnl, para_env%group)
-            CALL mp_sum(virdeb%pv_ecore_overlap, para_env%group)
-            CALL mp_sum(virdeb%pv_ehartree, para_env%group)
-            CALL mp_sum(virdeb%pv_exc, para_env%group)
-            CALL mp_sum(virdeb%pv_exx, para_env%group)
-            CALL mp_sum(virdeb%pv_vdw, para_env%group)
-            CALL mp_sum(virdeb%pv_mp2, para_env%group)
-            CALL mp_sum(virdeb%pv_nlcc, para_env%group)
-            CALL mp_sum(virdeb%pv_gapw, para_env%group)
-            CALL mp_sum(virdeb%pv_lrigpw, para_env%group)
-            CALL mp_sum(virdeb%pv_virial, para_env%group)
+            CALL para_env%sum(virdeb%pv_overlap)
+            CALL para_env%sum(virdeb%pv_ekinetic)
+            CALL para_env%sum(virdeb%pv_ppl)
+            CALL para_env%sum(virdeb%pv_ppnl)
+            CALL para_env%sum(virdeb%pv_ecore_overlap)
+            CALL para_env%sum(virdeb%pv_ehartree)
+            CALL para_env%sum(virdeb%pv_exc)
+            CALL para_env%sum(virdeb%pv_exx)
+            CALL para_env%sum(virdeb%pv_vdw)
+            CALL para_env%sum(virdeb%pv_mp2)
+            CALL para_env%sum(virdeb%pv_nlcc)
+            CALL para_env%sum(virdeb%pv_gapw)
+            CALL para_env%sum(virdeb%pv_lrigpw)
+            CALL para_env%sum(virdeb%pv_virial)
             CALL symmetrize_virial(virdeb)
 
             ! apply stress-tensor 1st and 2nd volume terms
@@ -2183,7 +2194,7 @@ CONTAINS
                ! There should be a more elegant solution to that ...
             END DO
 
-            CALL mp_sum(sttot, para_env%group)
+            CALL para_env%sum(sttot)
             stdeb = fconv*(virdeb%pv_virial - sttot)
             IF (iounit > 0) WRITE (UNIT=iounit, FMT="(T2,A,T41,2(1X,ES19.11))") &
                'STRESS| Explicit electronic stress   ', one_third_sum_diag(stdeb), det_3x3(stdeb)
@@ -2290,7 +2301,6 @@ CONTAINS
 !>      08.2016 created [JGH]
 !> \author JGH
 ! **************************************************************************************************
-
    SUBROUTINE mao_create_matrices(ec_env, ksmat, smat, pmat, wmat)
 
       TYPE(energy_correction_type), POINTER              :: ec_env
@@ -2364,7 +2374,6 @@ CONTAINS
 !>      08.2016 created [JGH]
 !> \author JGH
 ! **************************************************************************************************
-
    SUBROUTINE mao_release_matrices(ec_env, ksmat, smat, pmat, wmat)
 
       TYPE(energy_correction_type), POINTER              :: ec_env
@@ -2413,7 +2422,6 @@ CONTAINS
 !>      03.2014 created [JGH]
 !> \author JGH
 ! **************************************************************************************************
-
    SUBROUTINE ec_diag_solver(qs_env, matrix_ks, matrix_s, matrix_p, matrix_w)
 
       TYPE(qs_environment_type), POINTER                 :: qs_env
@@ -2427,10 +2435,10 @@ CONTAINS
       TYPE(cp_blacs_env_type), POINTER                   :: blacs_env
       TYPE(cp_fm_struct_type), POINTER                   :: fm_struct
       TYPE(cp_fm_type)                                   :: fm_ks, fm_mo, fm_ortho
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_type), POINTER                          :: buf1_dbcsr, buf2_dbcsr, buf3_dbcsr, &
                                                             ortho_dbcsr, ref_matrix
       TYPE(dft_control_type), POINTER                    :: dft_control
+      TYPE(mp_para_env_type), POINTER                    :: para_env
 
       CALL timeset(routineN, handle)
 
@@ -2579,8 +2587,8 @@ CONTAINS
          ! Core hamiltonian energy
          CALL calculate_ptrace(ec_env%matrix_h, ec_env%matrix_p, ec_env%ecore, SIZE(ec_env%matrix_p, 1))
 
-         ec_env%etotal = ec_env%ecore + ec_env%ehartree + ec_env%exc + ec_env%edispersion &
-                         + ec_env%efield_elec + ec_env%efield_nuclear
+         ec_env%ecore = ec_env%ecore + ec_env%efield_nuclear
+         ec_env%etotal = ec_env%ecore + ec_env%ehartree + ec_env%exc + ec_env%edispersion
          IF (unit_nr > 0) THEN
             WRITE (unit_nr, '(T3,A,T56,F25.15)') "Ecore    ", ec_env%ecore
             WRITE (unit_nr, '(T3,A,T56,F25.15)') "Ehartree ", ec_env%ehartree
@@ -2792,11 +2800,11 @@ CONTAINS
       TYPE(atomic_kind_type), POINTER                    :: atomic_kind
       TYPE(cell_type), POINTER                           :: cell
       TYPE(cp_logger_type), POINTER                      :: logger
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(cp_result_type), POINTER                      :: results
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: matrix_s, moments
       TYPE(dft_control_type), POINTER                    :: dft_control
       TYPE(distribution_1d_type), POINTER                :: local_particles
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
       TYPE(pw_env_type), POINTER                         :: pw_env
       TYPE(pw_pool_p_type), DIMENSION(:), POINTER        :: pw_pools
@@ -2813,7 +2821,7 @@ CONTAINS
       rlab(3) = "Z"
 
       logger => cp_get_default_logger()
-      IF (logger%para_env%ionode) THEN
+      IF (logger%para_env%is_source()) THEN
          iounit = cp_logger_get_default_unit_nr(logger, local=.TRUE.)
       ELSE
          iounit = -1
@@ -2879,7 +2887,7 @@ CONTAINS
                      cdip(1:3) = cdip(1:3) - charge*ria(1:3)
                   END DO
                END DO
-               CALL mp_sum(cdip, para_env%group)
+               CALL para_env%sum(cdip)
                !
                ! direct density contribution
                CALL ec_efield_integrals(qs_env, ec_env, rcc)
@@ -3099,12 +3107,12 @@ CONTAINS
       INTEGER                                            :: handle, ispin, nelectron_spin_real, &
                                                             nspins
       INTEGER, DIMENSION(2)                              :: nmo
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: wmat
       TYPE(dbcsr_type), ALLOCATABLE, DIMENSION(:)        :: matrix_ks_deviation
       TYPE(dft_control_type), POINTER                    :: dft_control
       TYPE(energy_correction_type), POINTER              :: ec_env
       TYPE(ls_scf_env_type), POINTER                     :: ls_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
 
       CALL timeset(routineN, handle)
 
@@ -3278,12 +3286,12 @@ CONTAINS
       TYPE(cp_fm_type)                                   :: sv
       TYPE(cp_fm_type), POINTER                          :: mo_coeff
       TYPE(cp_logger_type), POINTER                      :: logger
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: p_rmpv
       TYPE(dbcsr_p_type), DIMENSION(:, :), POINTER       :: rho_ao
       TYPE(dft_control_type), POINTER                    :: dft_control
       TYPE(gto_basis_set_type), POINTER                  :: basis_set, harris_basis
       TYPE(mo_set_type), DIMENSION(:), POINTER           :: mos
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
       TYPE(preconditioner_type), POINTER                 :: local_preconditioner
       TYPE(qs_kind_type), DIMENSION(:), POINTER          :: qs_kind_set
@@ -3357,8 +3365,7 @@ CONTAINS
 
          p_rmpv => matrix_p(:, 1)
 
-         CALL calculate_atomic_block_dm(p_rmpv, matrix_s(1, 1)%matrix, &
-                                        particle_set, atomic_kind_set, qs_kind_set, &
+         CALL calculate_atomic_block_dm(p_rmpv, matrix_s(1, 1)%matrix, atomic_kind_set, qs_kind_set, &
                                         nspins, nelectron_spin, iounit, para_env)
 
       CASE (ec_ot_gs)

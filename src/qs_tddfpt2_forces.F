@@ -32,7 +32,6 @@ MODULE qs_tddfpt2_forces
    USE cp_log_handling,                 ONLY: cp_get_default_logger,&
                                               cp_logger_get_default_unit_nr,&
                                               cp_logger_type
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE dbcsr_api,                       ONLY: &
         dbcsr_add, dbcsr_complete_redistribute, dbcsr_copy, dbcsr_create, dbcsr_dot, dbcsr_p_type, &
         dbcsr_release, dbcsr_scale, dbcsr_set, dbcsr_type, dbcsr_type_antisymmetric
@@ -57,7 +56,7 @@ MODULE qs_tddfpt2_forces
                                               section_vals_type,&
                                               section_vals_val_get
    USE kinds,                           ONLY: dp
-   USE message_passing,                 ONLY: mp_sum
+   USE message_passing,                 ONLY: mp_para_env_type
    USE mulliken,                        ONLY: ao_charges
    USE parallel_gemm_api,               ONLY: parallel_gemm
    USE particle_types,                  ONLY: particle_type
@@ -311,10 +310,10 @@ CONTAINS
       TYPE(tddfpt_work_matrices)                         :: work_matrices
 
       CHARACTER(LEN=*), PARAMETER                        :: routineN = 'tddfpt_forces'
-      LOGICAL, PARAMETER                                 :: debug_forces = .FALSE.
 
-      INTEGER                                            :: handle, nkind
+      INTEGER                                            :: handle
       INTEGER, ALLOCATABLE, DIMENSION(:)                 :: natom_of_kind
+      LOGICAL                                            :: debug_forces
       REAL(KIND=dp)                                      :: ehartree, exc
       TYPE(atomic_kind_type), DIMENSION(:), POINTER      :: atomic_kind_set
       TYPE(dft_control_type), POINTER                    :: dft_control
@@ -322,11 +321,11 @@ CONTAINS
 
       CALL timeset(routineN, handle)
 
+      ! for extended debug output
+      debug_forces = ex_env%debug_forces
       ! prepare force array
       CALL get_qs_env(qs_env, dft_control=dft_control, force=ks_force, &
                       atomic_kind_set=atomic_kind_set)
-      nkind = SIZE(atomic_kind_set)
-      ALLOCATE (natom_of_kind(nkind))
       CALL get_atomic_kind_set(atomic_kind_set=atomic_kind_set, natom_of_kind=natom_of_kind)
       NULLIFY (td_force)
       CALL allocate_qs_force(td_force, natom_of_kind)
@@ -391,10 +390,10 @@ CONTAINS
       TYPE(atomic_kind_type), DIMENSION(:), POINTER      :: atomic_kind_set
       TYPE(cp_fm_type), DIMENSION(:), POINTER            :: evect
       TYPE(cp_logger_type), POINTER                      :: logger
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: matrix_ks, matrix_s, matrix_wx1, &
                                                             matrix_wz, scrm
       TYPE(dft_control_type), POINTER                    :: dft_control
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(neighbor_list_set_p_type), DIMENSION(:), &
          POINTER                                         :: sab_orb
       TYPE(qs_force_type), DIMENSION(:), POINTER         :: force
@@ -404,7 +403,7 @@ CONTAINS
       CALL timeset(routineN, handle)
 
       logger => cp_get_default_logger()
-      IF (logger%para_env%ionode) THEN
+      IF (logger%para_env%is_source()) THEN
          iounit = cp_logger_get_default_unit_nr(logger, local=.TRUE.)
       ELSE
          iounit = -1
@@ -461,7 +460,7 @@ CONTAINS
       CALL dbcsr_deallocate_matrix_set(matrix_wz)
       IF (debug_forces) THEN
          fodeb(1:3) = force(1)%overlap(1:3, 1) - fodeb(1:3)
-         CALL mp_sum(fodeb, para_env%group)
+         CALL para_env%sum(fodeb)
          IF (iounit > 0) WRITE (iounit, "(T3,A,T33,3F16.8)") "DEBUG:: Wx*dS ", fodeb
       END IF
 
@@ -497,7 +496,7 @@ CONTAINS
       CALL dbcsr_deallocate_matrix_set(matrix_wz)
       IF (debug_forces) THEN
          fodeb(1:3) = force(1)%overlap(1:3, 1) - fodeb(1:3)
-         CALL mp_sum(fodeb, para_env%group)
+         CALL para_env%sum(fodeb)
          IF (iounit > 0) WRITE (iounit, "(T3,A,T33,3F16.8)") "DEBUG:: xWx*dS ", fodeb
       END IF
 
@@ -517,7 +516,7 @@ CONTAINS
          CALL dbcsr_deallocate_matrix_set(scrm)
          IF (debug_forces) THEN
             fodeb(1:3) = force(1)%overlap(1:3, 1) - fodeb(1:3)
-            CALL mp_sum(fodeb, para_env%group)
+            CALL para_env%sum(fodeb)
             IF (iounit > 0) WRITE (iounit, "(T3,A,T33,3F16.8)") "DEBUG:: WK*dS ", fodeb
          END IF
       END IF
@@ -526,7 +525,7 @@ CONTAINS
          ALLOCATE (ftot2(3, natom))
          CALL total_qs_force(ftot2, force, atomic_kind_set)
          fodeb(1:3) = ftot2(1:3, 1) - ftot1(1:3, 1)
-         CALL mp_sum(fodeb, para_env%group)
+         CALL para_env%sum(fodeb)
          IF (iounit > 0) WRITE (iounit, "(T3,A,T30,3F16.8)") "DEBUG:: Excitation Force", fodeb
          DEALLOCATE (ftot1, ftot2)
       END IF
@@ -580,7 +579,7 @@ CONTAINS
       CALL dbcsr_dot(matrix_pe, matrix_s, tmp)
       IF (ABS(tmp) > 1.e-08_dp) THEN
          logger => cp_get_default_logger()
-         IF (logger%para_env%ionode) THEN
+         IF (logger%para_env%is_source()) THEN
             iounit = cp_logger_get_default_unit_nr(logger, local=.TRUE.)
          ELSE
             iounit = -1
@@ -664,7 +663,6 @@ CONTAINS
       TYPE(atomic_kind_type), DIMENSION(:), POINTER      :: atomic_kind_set
       TYPE(cp_fm_type), POINTER                          :: mos
       TYPE(cp_logger_type), POINTER                      :: logger
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: msaux
       TYPE(dbcsr_p_type), DIMENSION(:, :), POINTER       :: mhz, mpe
       TYPE(dbcsr_type), POINTER                          :: dbwork
@@ -672,6 +670,7 @@ CONTAINS
       TYPE(hartree_local_type), POINTER                  :: hartree_local
       TYPE(hfx_type), DIMENSION(:, :), POINTER           :: x_data
       TYPE(local_rho_type), POINTER                      :: local_rho_set, local_rho_set_admm
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(neighbor_list_set_p_type), DIMENSION(:), &
          POINTER                                         :: sab, sab_aux_fit
       TYPE(oce_matrix_type), POINTER                     :: oce
@@ -785,9 +784,9 @@ CONTAINS
          CALL pw_axpy(local_rho_set%rho0_mpole%rho0_s_gs, rho_tot_gspace)
       END IF
 
-      IF (ABS(rhotot) > 1.e-08_dp) THEN
+      IF (ABS(rhotot) > 1.e-05_dp) THEN
          logger => cp_get_default_logger()
-         IF (logger%para_env%ionode) THEN
+         IF (logger%para_env%is_source()) THEN
             iounit = cp_logger_get_default_unit_nr(logger, local=.TRUE.)
          ELSE
             iounit = -1
@@ -1156,11 +1155,11 @@ CONTAINS
       REAL(KIND=dp)                                      :: focc
       TYPE(atomic_kind_type), DIMENSION(:), POINTER      :: atomic_kind_set
       TYPE(cp_fm_type), POINTER                          :: mos
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: p_matrix
       TYPE(dbcsr_p_type), DIMENSION(:, :), POINTER       :: matrix_p, matrix_s
       TYPE(dbcsr_type), POINTER                          :: s_matrix
       TYPE(dft_control_type), POINTER                    :: dft_control
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
       TYPE(qs_kind_type), DIMENSION(:), POINTER          :: qs_kind_set
       TYPE(qs_rho_type), POINTER                         :: rho

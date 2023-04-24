@@ -25,8 +25,6 @@ MODULE ec_environment
    USE cp_log_handling,                 ONLY: cp_get_default_logger,&
                                               cp_logger_get_default_unit_nr,&
                                               cp_logger_type
-   USE cp_para_env,                     ONLY: cp_para_env_retain
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE dm_ls_scf_types,                 ONLY: ls_scf_env_type
    USE ec_env_types,                    ONLY: energy_correction_type
    USE input_constants,                 ONLY: &
@@ -43,6 +41,7 @@ MODULE ec_environment
                                               section_vals_type,&
                                               section_vals_val_get
    USE kinds,                           ONLY: dp
+   USE message_passing,                 ONLY: mp_para_env_type
    USE molecule_types,                  ONLY: molecule_of_atom,&
                                               molecule_type
    USE orbital_pointers,                ONLY: init_orbital_pointers
@@ -120,9 +119,9 @@ CONTAINS
       REAL(KIND=dp)                                      :: eps_pgf_orb
       TYPE(atomic_kind_type), DIMENSION(:), POINTER      :: atomic_kind_set
       TYPE(cp_logger_type), POINTER                      :: logger
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dft_control_type), POINTER                    :: dft_control
       TYPE(gto_basis_set_type), POINTER                  :: basis_set, harris_basis
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(qs_dispersion_type), POINTER                  :: dispersion_env
       TYPE(qs_kind_type), DIMENSION(:), POINTER          :: qs_kind_set
       TYPE(qs_kind_type), POINTER                        :: qs_kind
@@ -158,7 +157,7 @@ CONTAINS
          CPASSERT(PRESENT(ec_section))
          ! get a useful output_unit
          logger => cp_get_default_logger()
-         IF (logger%para_env%ionode) THEN
+         IF (logger%para_env%is_source()) THEN
             unit_nr = cp_logger_get_default_unit_nr(logger, local=.TRUE.)
          ELSE
             unit_nr = -1
@@ -189,6 +188,11 @@ CONTAINS
          ! Skip EC calculation if ground-state calculation did not converge
          CALL section_vals_val_get(ec_section, "SKIP_EC", &
                                    l_val=ec_env%skip_ec)
+         ! Debug output
+         CALL section_vals_val_get(ec_section, "DEBUG_FORCES", &
+                                   l_val=ec_env%debug_forces)
+         CALL section_vals_val_get(ec_section, "DEBUG_STRESS", &
+                                   l_val=ec_env%debug_stress)
 
          ec_env%do_skip = .FALSE.
 
@@ -372,7 +376,7 @@ CONTAINS
       ! copy some basic stuff
       ls_env%nspins = dft_control%nspins
       ls_env%natoms = SIZE(particle_set, 1)
-      CALL cp_para_env_retain(ls_env%para_env)
+      CALL ls_env%para_env%retain()
 
       ! initialize block to group to defined molecules
       ALLOCATE (ls_env%ls_mstruct%atom_to_molecule(ls_env%natoms))

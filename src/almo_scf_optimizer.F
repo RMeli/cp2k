@@ -50,7 +50,6 @@ MODULE almo_scf_optimizer
                                               cp_to_string
    USE cp_output_handling,              ONLY: cp_print_key_finished_output,&
                                               cp_print_key_unit_nr
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE ct_methods,                      ONLY: analytic_line_search,&
                                               ct_step_execute,&
                                               diagonalize_diagonal_blocks
@@ -94,7 +93,7 @@ MODULE almo_scf_optimizer
    USE machine,                         ONLY: m_flush,&
                                               m_walltime
    USE message_passing,                 ONLY: mp_comm_type,&
-                                              mp_sum
+                                              mp_para_env_type
    USE particle_methods,                ONLY: get_particle_set
    USE particle_types,                  ONLY: particle_type
    USE qs_energy_types,                 ONLY: qs_energy_type
@@ -159,7 +158,7 @@ CONTAINS
 
       ! get a useful output_unit
       logger => cp_get_default_logger()
-      IF (logger%para_env%ionode) THEN
+      IF (logger%para_env%is_source()) THEN
          unit_nr = cp_logger_get_default_unit_nr(logger, local=.TRUE.)
       ELSE
          unit_nr = -1
@@ -474,7 +473,7 @@ CONTAINS
 
       ! get a useful output_unit
       logger => cp_get_default_logger()
-      IF (logger%para_env%ionode) THEN
+      IF (logger%para_env%is_source()) THEN
          unit_nr = cp_logger_get_default_unit_nr(logger, local=.TRUE.)
       ELSE
          unit_nr = -1
@@ -912,7 +911,7 @@ CONTAINS
 
       ! get a useful output_unit
       logger => cp_get_default_logger()
-      IF (logger%para_env%ionode) THEN
+      IF (logger%para_env%is_source()) THEN
          unit_nr = cp_logger_get_default_unit_nr(logger, local=.TRUE.)
       ELSE
          unit_nr = -1
@@ -1342,7 +1341,7 @@ CONTAINS
 
                         reim_diag = 0.0_dp
                         CALL dbcsr_get_diag(tempOccOcc(ispin), reim_diag)
-                        CALL mp_sum(reim_diag, para_group)
+                        CALL para_group%sum(reim_diag)
                         z2(:) = z2(:) + reim_diag(:)*reim_diag(:)
 
                      END DO
@@ -2054,7 +2053,7 @@ CONTAINS
 
       ! get a useful output_unit
       logger => cp_get_default_logger()
-      IF (logger%para_env%mepos == logger%para_env%source) THEN
+      IF (logger%para_env%is_source()) THEN
          unit_nr = cp_logger_get_default_unit_nr(logger, local=.TRUE.)
       ELSE
          unit_nr = -1
@@ -2433,7 +2432,7 @@ CONTAINS
                                    retain_sparsity=.TRUE.)
                ALLOCATE (diagonal(nocc(ispin)))
                CALL dbcsr_get_diag(m_sig_sqrti_ii(ispin), diagonal)
-               CALL mp_sum(diagonal, para_group)
+               CALL para_group%sum(diagonal)
                ! TODO: works for zero diagonal elements?
                diagonal(:) = 1.0_dp/SQRT(diagonal(:))
                CALL dbcsr_set(m_sig_sqrti_ii(ispin), 0.0_dp)
@@ -3327,7 +3326,7 @@ CONTAINS
 
       ! get a useful output_unit
       logger => cp_get_default_logger()
-      IF (logger%para_env%ionode) THEN
+      IF (logger%para_env%is_source()) THEN
          unit_nr = cp_logger_get_default_unit_nr(logger, local=.TRUE.)
       ELSE
          unit_nr = -1
@@ -5403,7 +5402,7 @@ CONTAINS
 !
 !    ! get a useful output_unit
 !    logger => cp_get_default_logger()
-!    IF (logger%para_env%mepos==logger%para_env%source) THEN
+!    IF (logger%para_env%is_source()) THEN
 !       unit_nr=cp_logger_get_default_unit_nr(logger,local=.TRUE.)
 !    ELSE
 !       unit_nr=-1
@@ -6366,7 +6365,7 @@ CONTAINS
 
       ! get a useful output_unit
       logger => cp_get_default_logger()
-      IF (logger%para_env%ionode) THEN
+      IF (logger%para_env%is_source()) THEN
          unit_nr = cp_logger_get_default_unit_nr(logger, local=.TRUE.)
       ELSE
          unit_nr = -1
@@ -6527,7 +6526,7 @@ CONTAINS
 
             reim_diag = 0.0_dp
             CALL dbcsr_get_diag(tempOccOcc2, reim_diag)
-            CALL mp_sum(reim_diag, para_group)
+            CALL para_group%sum(reim_diag)
             z2(:) = z2(:) + reim_diag(:)*reim_diag(:)
 
          END DO
@@ -6660,7 +6659,7 @@ CONTAINS
             CALL dbcsr_get_diag(m_temp_oo_4, tg_diagonal)
             CALL dbcsr_set(m_temp_oo_4, 0.0_dp)
             CALL dbcsr_set_diag(m_temp_oo_4, tg_diagonal)
-            !CALL mp_sum(tg_diagonal, para_group)
+            !CALL para_group%sum(tg_diagonal)
             z2(:) = z2(:) + tg_diagonal(:)*tg_diagonal(:)
 
             CALL dbcsr_multiply("N", "N", 1.0_dp, &
@@ -6827,7 +6826,7 @@ CONTAINS
 
       ! get a useful output_unit
       logger => cp_get_default_logger()
-      IF (logger%para_env%ionode) THEN
+      IF (logger%para_env%is_source()) THEN
          unit_nr = cp_logger_get_default_unit_nr(logger, local=.TRUE.)
       ELSE
          unit_nr = -1
@@ -6975,7 +6974,7 @@ CONTAINS
       TYPE(dbcsr_type), INTENT(IN)                       :: m_siginv, m_quench_t, m_FTsiginv, &
                                                             m_siginvTFTsiginv, m_ST
       TYPE(dbcsr_type), INTENT(INOUT), OPTIONAL          :: m_STsiginv_out, m_s_vv_out, m_f_vv_out
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(cp_blacs_env_type), POINTER                   :: blacs_env
       INTEGER, DIMENSION(:), INTENT(IN)                  :: nocc_of_domain
       TYPE(domain_submatrix_type), DIMENSION(:), &
@@ -7293,7 +7292,7 @@ CONTAINS
 
       ! get a useful output_unit
       logger => cp_get_default_logger()
-      IF (logger%para_env%ionode) THEN
+      IF (logger%para_env%is_source()) THEN
          unit_nr = cp_logger_get_default_unit_nr(logger, local=.TRUE.)
       ELSE
          unit_nr = -1
@@ -7466,7 +7465,7 @@ CONTAINS
       TYPE(domain_map_type), DIMENSION(:), INTENT(IN)    :: domain_map
       INTEGER, DIMENSION(:), INTENT(IN)                  :: cpu_of_domain
       INTEGER, DIMENSION(:, :), INTENT(IN)               :: nocc_of_domain
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(cp_blacs_env_type), POINTER                   :: blacs_env
       REAL(KIND=dp), INTENT(IN)                          :: eps_filter
       LOGICAL, INTENT(IN)                                :: optimize_theta, penalty_occ_vol, &
@@ -7499,7 +7498,7 @@ CONTAINS
 
       ! get a useful output_unit
       logger => cp_get_default_logger()
-      IF (logger%para_env%ionode) THEN
+      IF (logger%para_env%is_source()) THEN
          unit_nr = cp_logger_get_default_unit_nr(logger, local=.TRUE.)
       ELSE
          unit_nr = -1
@@ -8331,7 +8330,7 @@ CONTAINS
                                                             penalty_occ_vol_pf2, spin_factor, &
                                                             eps_zero
       TYPE(dbcsr_type), INTENT(IN)                       :: m_s
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(cp_blacs_env_type), POINTER                   :: blacs_env
 
       CHARACTER(len=*), PARAMETER :: routineN = 'hessian_diag_apply'
@@ -8358,7 +8357,7 @@ CONTAINS
 
       ! get a useful output_unit
       logger => cp_get_default_logger()
-      IF (logger%para_env%ionode) THEN
+      IF (logger%para_env%is_source()) THEN
          unit_nr = cp_logger_get_default_unit_nr(logger, local=.TRUE.)
       ELSE
          unit_nr = -1
@@ -9114,7 +9113,7 @@ CONTAINS
 
       ! get a useful output_unit
       logger => cp_get_default_logger()
-      IF (logger%para_env%ionode) THEN
+      IF (logger%para_env%is_source()) THEN
          unit_nr = cp_logger_get_default_unit_nr(logger, local=.TRUE.)
       ELSE
          unit_nr = -1
@@ -10969,7 +10968,7 @@ CONTAINS
 
       ! get a useful output_unit
       logger => cp_get_default_logger()
-      IF (logger%para_env%ionode) THEN
+      IF (logger%para_env%is_source()) THEN
          unit_nr = cp_logger_get_default_unit_nr(logger, local=.TRUE.)
       ELSE
          unit_nr = -1

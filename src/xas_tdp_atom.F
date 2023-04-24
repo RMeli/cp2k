@@ -31,8 +31,6 @@ MODULE xas_tdp_atom
                                               cp_dbcsr_cholesky_invert
    USE cp_dbcsr_operations,             ONLY: dbcsr_deallocate_matrix_set
    USE cp_log_handling,                 ONLY: cp_logger_get_default_io_unit
-   USE cp_para_env,                     ONLY: cp_para_env_create
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE dbcsr_api,                       ONLY: &
         dbcsr_create, dbcsr_distribution_get, dbcsr_distribution_new, dbcsr_distribution_release, &
         dbcsr_distribution_type, dbcsr_filter, dbcsr_finalize, dbcsr_get_block_p, &
@@ -61,13 +59,9 @@ MODULE xas_tdp_atom
    USE mathlib,                         ONLY: get_diag,&
                                               invmat_symm
    USE memory_utilities,                ONLY: reallocate
-   USE message_passing,                 ONLY: mp_comm_split_direct,&
-                                              mp_comm_type,&
-                                              mp_irecv,&
-                                              mp_isend,&
+   USE message_passing,                 ONLY: mp_comm_type,&
+                                              mp_para_env_type,&
                                               mp_request_type,&
-                                              mp_sum,&
-                                              mp_sync,&
                                               mp_waitall
    USE orbital_pointers,                ONLY: indco,&
                                               indso,&
@@ -521,8 +515,8 @@ CONTAINS
       REAL(dp)                                           :: dist2, rad2, ri(3), rij(3), rj(3)
       TYPE(cell_type), POINTER                           :: cell
       TYPE(cp_1d_i_p_type), DIMENSION(:), POINTER        :: my_neighbor_set
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_iterator_type)                          :: iter
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
 
       NULLIFY (particle_set, para_env, my_neighbor_set, cell)
@@ -572,7 +566,7 @@ CONTAINS
 
       END DO !iter
       CALL dbcsr_iterator_stop(iter)
-      CALL mp_sum(n_neighbors, para_env%group)
+      CALL para_env%sum(n_neighbors)
 
       ! Allocate the neighbor_set arrays at the correct length
       DO ibase = 1, nbase
@@ -612,7 +606,7 @@ CONTAINS
 
       ! Make sure the info is shared among the procs
       DO ibase = 1, nbase
-         CALL mp_sum(my_neighbor_set(ibase)%array, para_env%group)
+         CALL para_env%sum(my_neighbor_set(ibase)%array)
       END DO
 
       ! Gather all indices if asked for it
@@ -684,11 +678,11 @@ CONTAINS
       TYPE(cell_type), POINTER                           :: cell
       TYPE(cp_2d_r_p_type), ALLOCATABLE, DIMENSION(:)    :: recv_buff, send_buff
       TYPE(cp_blacs_env_type), POINTER                   :: blacs_env
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_distribution_type)                      :: sinv_dist
       TYPE(dbcsr_distribution_type), POINTER             :: dbcsr_dist
       TYPE(dbcsr_iterator_type)                          :: iter
       TYPE(mp_comm_type)                                 :: group
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(mp_request_type), ALLOCATABLE, DIMENSION(:)   :: recv_req, send_req
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
 
@@ -780,7 +774,7 @@ CONTAINS
             is = is + 1
             send_buff(is)%array => block_whole
             tag = natom*inb + jnb
-            CALL mp_isend(msgin=send_buff(is)%array, dest=dest, comm=group, request=send_req(is), tag=tag)
+            CALL group%isend(msgin=send_buff(is)%array, dest=dest, request=send_req(is), tag=tag)
 
          END IF
 
@@ -806,8 +800,8 @@ CONTAINS
          tag = natom*inb + jnb
          ir = ir + 1
          recv_buff(ir)%array => block_risinv
-         CALL mp_irecv(msgout=recv_buff(ir)%array, source=source, request=recv_req(ir), &
-                       tag=tag, comm=group)
+         CALL group%irecv(msgout=recv_buff(ir)%array, source=source, request=recv_req(ir), &
+                          tag=tag)
 
       END DO
       CALL dbcsr_iterator_stop(iter)
@@ -873,7 +867,6 @@ CONTAINS
       REAL(dp), DIMENSION(:, :), POINTER                 :: pmat_block, pmat_blockt, sinv_block, &
                                                             sinv_blockt
       TYPE(cp_blacs_env_type), POINTER                   :: blacs_env
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_distribution_type), POINTER             :: dbcsr_dist
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: overlap, rho_ao
       TYPE(dbcsr_type)                                   :: ri_sinv
@@ -882,6 +875,7 @@ CONTAINS
       TYPE(dbt_type)                                     :: pqX
       TYPE(gto_basis_set_p_type), DIMENSION(:), POINTER  :: basis_set_orb, basis_set_ri
       TYPE(libint_potential_type)                        :: pot
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(neighbor_list_set_p_type), DIMENSION(:), &
          POINTER                                         :: ab_list, ac_list, sab_ri
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
@@ -1096,7 +1090,7 @@ CONTAINS
             DO iat = 1, natom
                IF ((.NOT. ANY(xas_atom_env%exat_neighbors(iex)%array == iat)) &
                    .AND. (.NOT. xas_atom_env%excited_atoms(iex) == iat)) CYCLE
-               CALL mp_sum(xas_atom_env%ri_dcoeff(iat, ispin, iex)%array, para_env%group)
+               CALL para_env%sum(xas_atom_env%ri_dcoeff(iat, ispin, iex)%array)
             END DO !iat
          END DO !ispin
       END DO !iex
@@ -1715,10 +1709,10 @@ CONTAINS
       REAL(dp), ALLOCATABLE, DIMENSION(:)                :: rexp
       REAL(dp), DIMENSION(:, :), POINTER                 :: dgr1, dgr2, ga, gr, slm, zet
       REAL(dp), DIMENSION(:, :, :), POINTER              :: dga1, dga2, dslm_dxyz
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(grid_atom_type), POINTER                      :: grid_atom
       TYPE(gto_basis_set_type), POINTER                  :: ri_basis
       TYPE(harmonics_atom_type), POINTER                 :: harmonics
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(qs_kind_type), DIMENSION(:), POINTER          :: qs_kind_set
 
       NULLIFY (qs_kind_set, harmonics, grid_atom, slm, dslm_dxyz, ri_basis, lmax, lmin, npgf)
@@ -1880,9 +1874,8 @@ CONTAINS
       LOGICAL                                            :: do_gga, do_sc, do_sf
       TYPE(batch_info_type)                              :: batch_info
       TYPE(cp_1d_r_p_type), DIMENSION(:, :), POINTER     :: ri_dcoeff
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dft_control_type), POINTER                    :: dft_control
-      TYPE(mp_comm_type)                                 :: subcomm
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
       TYPE(qs_kind_type), DIMENSION(:), POINTER          :: qs_kind_set
       TYPE(section_vals_type), POINTER                   :: input, xc_functionals
@@ -1935,9 +1928,7 @@ CONTAINS
       batch_info%ipe = ipe
 
       !create a subcommunicator for this batch
-      CALL mp_comm_split_direct(para_env%group, subcomm, ibatch)
-      NULLIFY (batch_info%para_env)
-      CALL cp_para_env_create(batch_info%para_env, subcomm)
+      CALL batch_info%para_env%from_split(para_env, ibatch)
 
 !  Precompute the spherical orbital of the RI basis (and maybe their gradient) on the grids of the
 !  excited atoms. Needed for the GGA integration and to actually put the density on the grid
@@ -1989,12 +1980,12 @@ CONTAINS
          END DO
 
          ! make sure contributions from different procs are summed up
-         CALL mp_sum(rho_set%rhoa, batch_info%para_env%group)
-         CALL mp_sum(rho_set%rhob, batch_info%para_env%group)
+         CALL batch_info%para_env%sum(rho_set%rhoa)
+         CALL batch_info%para_env%sum(rho_set%rhob)
          IF (do_gga) THEN
             DO dir = 1, 3
-               CALL mp_sum(rho_set%drhoa(dir)%array, batch_info%para_env%group)
-               CALL mp_sum(rho_set%drhob(dir)%array, batch_info%para_env%group)
+               CALL batch_info%para_env%sum(rho_set%drhoa(dir)%array)
+               CALL batch_info%para_env%sum(rho_set%drhob(dir)%array)
             END DO
          END IF
 
@@ -2029,7 +2020,7 @@ CONTAINS
       CALL release_batch_info(batch_info)
 
       !Not necessary to sync, but makes sure that any load inbalance is reported here
-      CALL mp_sync(para_env%group)
+      CALL para_env%sync()
 
       CALL timestop(handle)
 
@@ -2072,10 +2063,10 @@ CONTAINS
       REAL(dp), DIMENSION(:, :, :), POINTER              :: dga1, dga2
       TYPE(cp_2d_r_p_type), ALLOCATABLE, DIMENSION(:)    :: int_so, vxc
       TYPE(cp_3d_r_p_type), ALLOCATABLE, DIMENSION(:)    :: vxg
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(grid_atom_type), POINTER                      :: grid_atom
       TYPE(gto_basis_set_type), POINTER                  :: ri_basis
       TYPE(harmonics_atom_type), POINTER                 :: harmonics
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(qs_kind_type), DIMENSION(:), POINTER          :: qs_kind_set
 
       NULLIFY (grid_atom, ri_basis, qs_kind_set, ga, gr, dgr1, dgr2, lmax, lmin, npgf)
@@ -2221,7 +2212,7 @@ CONTAINS
       ri_sphi_so => xas_atom_env%ri_sphi_so(ikind)%array
       ALLOCATE (int_sgf(nsgf, nsgf))
       DO i = 1, ub
-         CALL mp_sum(int_so(i)%array, batch_info%para_env%group)
+         CALL batch_info%para_env%sum(int_so(i)%array)
          CALL contract_so2sgf(int_sgf, int_so(i)%array, ri_basis, ri_sphi_so)
          CALL daxpy(nsgf*nsgf, 1.0_dp, int_sgf, 1, int_fxc(iatom, i)%array, 1)
       END DO

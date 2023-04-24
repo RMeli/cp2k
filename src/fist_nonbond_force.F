@@ -35,12 +35,11 @@ MODULE fist_nonbond_force
    USE machine,                         ONLY: m_memory
    USE mathconstants,                   ONLY: oorootpi,&
                                               sqrthalf
-   USE message_passing,                 ONLY: mp_comm_type,&
-                                              mp_sum
+   USE message_passing,                 ONLY: mp_comm_type
    USE pair_potential_coulomb,          ONLY: potential_coulomb
    USE pair_potential_types,            ONLY: &
-        gal21_type, gal_type, nequip_type, nosh_nosh, nosh_sh, pair_potential_pp_type, &
-        pair_potential_single_type, sh_sh, siepmann_type, tersoff_type
+        allegro_type, gal21_type, gal_type, nequip_type, nosh_nosh, nosh_sh, &
+        pair_potential_pp_type, pair_potential_single_type, sh_sh, siepmann_type, tersoff_type
    USE particle_types,                  ONLY: particle_type
    USE shell_potential_types,           ONLY: get_shell,&
                                               shell_kind_type
@@ -230,7 +229,7 @@ CONTAINS
                fac_vdw = fac_kind
                full_nl = ANY(pot%type == tersoff_type) .OR. ANY(pot%type == siepmann_type) &
                          .OR. ANY(pot%type == gal_type) .OR. ANY(pot%type == gal21_type) &
-                         .OR. ANY(pot%type == nequip_type)
+                         .OR. ANY(pot%type == nequip_type) .OR. ANY(pot%type == allegro_type)
                IF ((.NOT. full_nl) .AND. (atom_a == atom_b)) THEN
                   fac_ei = 0.5_dp*fac_ei
                   fac_vdw = 0.5_dp*fac_vdw
@@ -729,7 +728,7 @@ CONTAINS
                fac_ei = ij_kind_full_fac(kind_a, kind_b)
                full_nl = ANY(pot%type == tersoff_type) .OR. ANY(pot%type == siepmann_type) &
                          .OR. ANY(pot%type == gal_type) .OR. ANY(pot%type == gal21_type) &
-                         .OR. ANY(pot%type == nequip_type)
+                         .OR. ANY(pot%type == nequip_type) .OR. ANY(pot%type == allegro_type)
                IF ((.NOT. full_nl) .AND. (atom_a == atom_b)) THEN
                   fac_ei = fac_ei*0.5_dp
                END IF
@@ -877,7 +876,7 @@ CONTAINS
          END IF
       END DO
 
-      CALL mp_sum(v_bonded_corr, group)
+      CALL group%sum(v_bonded_corr)
 
       CALL timestop(handle)
 

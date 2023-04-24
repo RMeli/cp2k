@@ -150,7 +150,7 @@ CONTAINS
    SUBROUTINE release_active_space_type(active_space_env)
       TYPE(active_space_type), POINTER                   :: active_space_env
 
-      INTEGER                                            :: imo, isp
+      INTEGER                                            :: imo
 
       IF (ASSOCIATED(active_space_env)) THEN
 
@@ -178,40 +178,11 @@ CONTAINS
 
          CALL release_eri_type(active_space_env%eri)
 
-         IF (ASSOCIATED(active_space_env%p_active)) THEN
-            DO isp = 1, SIZE(active_space_env%p_active)
-               CALL cp_fm_release(active_space_env%p_active(isp))
-            END DO
-            DEALLOCATE (active_space_env%p_active)
-         END IF
-
-         IF (ASSOCIATED(active_space_env%ks_sub)) THEN
-            DO isp = 1, SIZE(active_space_env%ks_sub)
-               CALL cp_fm_release(active_space_env%ks_sub(isp))
-            END DO
-            DEALLOCATE (active_space_env%ks_sub)
-         END IF
-
-         IF (ASSOCIATED(active_space_env%vxc_sub)) THEN
-            DO isp = 1, SIZE(active_space_env%vxc_sub)
-               CALL cp_fm_release(active_space_env%vxc_sub(isp))
-            END DO
-            DEALLOCATE (active_space_env%vxc_sub)
-         END IF
-
-         IF (ASSOCIATED(active_space_env%h_sub)) THEN
-            DO isp = 1, SIZE(active_space_env%h_sub)
-               CALL cp_fm_release(active_space_env%h_sub(isp))
-            END DO
-            DEALLOCATE (active_space_env%h_sub)
-         END IF
-
-         IF (ASSOCIATED(active_space_env%fock_sub)) THEN
-            DO isp = 1, SIZE(active_space_env%fock_sub)
-               CALL cp_fm_release(active_space_env%fock_sub(isp))
-            END DO
-            DEALLOCATE (active_space_env%fock_sub)
-         END IF
+         CALL cp_fm_release(active_space_env%p_active)
+         CALL cp_fm_release(active_space_env%ks_sub)
+         CALL cp_fm_release(active_space_env%vxc_sub)
+         CALL cp_fm_release(active_space_env%h_sub)
+         CALL cp_fm_release(active_space_env%fock_sub)
 
          IF (ASSOCIATED(active_space_env%pmat_inactive)) &
             CALL dbcsr_deallocate_matrix_set(active_space_env%pmat_inactive)
@@ -301,32 +272,32 @@ CONTAINS
 !>      04.2016 created [JGH]
 ! **************************************************************************************************
    FUNCTION get_irange_csr(nindex, mp_group) RESULT(irange)
-      USE message_passing, ONLY: mp_environ, mp_comm_type
+      USE message_passing, ONLY: mp_comm_type
       INTEGER, INTENT(IN)                                :: nindex
       TYPE(mp_comm_type), INTENT(IN)                     :: mp_group
       INTEGER, DIMENSION(2)                              :: irange
 
-      INTEGER                                            :: numtask, taskid
       REAL(KIND=dp)                                      :: rat
 
-      CALL mp_environ(numtask, taskid, mp_group)
+      ASSOCIATE (numtask => mp_group%num_pe, taskid => mp_group%mepos)
 
-      IF (numtask == 1 .AND. taskid == 0) THEN
-         irange(1) = 1
-         irange(2) = nindex
-      ELSEIF (numtask >= nindex) THEN
-         IF (taskid >= nindex) THEN
+         IF (numtask == 1 .AND. taskid == 0) THEN
             irange(1) = 1
-            irange(2) = 0
+            irange(2) = nindex
+         ELSEIF (numtask >= nindex) THEN
+            IF (taskid >= nindex) THEN
+               irange(1) = 1
+               irange(2) = 0
+            ELSE
+               irange(1) = taskid + 1
+               irange(2) = taskid + 1
+            END IF
          ELSE
-            irange(1) = taskid + 1
-            irange(2) = taskid + 1
+            rat = REAL(nindex, KIND=dp)/REAL(numtask, KIND=dp)
+            irange(1) = NINT(rat*taskid) + 1
+            irange(2) = NINT(rat*taskid + rat)
          END IF
-      ELSE
-         rat = REAL(nindex, KIND=dp)/REAL(numtask, KIND=dp)
-         irange(1) = NINT(rat*taskid) + 1
-         irange(2) = NINT(rat*taskid + rat)
-      END IF
+      END ASSOCIATE
 
    END FUNCTION get_irange_csr
 
@@ -344,7 +315,6 @@ CONTAINS
 !> \note Calls MPI, must be executed on all ranks.
 ! **************************************************************************************************
    SUBROUTINE eri_type_eri_foreach(this, nspin, active_orbitals, fobj, spin1, spin2)
-      USE message_passing, ONLY: mp_sum, mp_sync
       CLASS(eri_type), INTENT(in)              :: this
       CLASS(eri_type_eri_element_func)         :: fobj
       INTEGER, DIMENSION(:, :), INTENT(IN)     :: active_orbitals
@@ -389,10 +359,10 @@ CONTAINS
                   nindex = 0
                END IF
 
-               CALL mp_sum(nindex, mp_group)
-               CALL mp_sum(colind(1:nindex), mp_group)
-               CALL mp_sum(erival(1:nindex), mp_group)
-               CALL mp_sync(mp_group)
+               CALL mp_group%sum(nindex)
+               CALL mp_group%sum(colind(1:nindex))
+               CALL mp_group%sum(erival(1:nindex))
+               CALL mp_group%sync()
 
                DO i34l = 1, nindex
                   i34 = colind(i34l)

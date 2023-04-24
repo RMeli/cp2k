@@ -150,6 +150,8 @@ The --with-PKG options follow the rules:
                           Default = system
   --with-intel            Use the Intel compiler to compile CP2K.
                           Default = system
+  --with-intel-classic    Use the classic Intel compiler to compile CP2K.
+                          Default = no
   --with-cmake            Cmake utilities
                           Default = install
   --with-openmpi          OpenMPI, important if you want a parallel version of CP2K.
@@ -218,7 +220,7 @@ The --with-PKG options follow the rules:
                           Default = install
   --with-libvori          Enable libvori for the Voronoi integration (and the BQB compressed trajectory format)
                           Default = install
-  --with-libtorch         Enable libtorch the machine learning framework needed for NequIP.
+  --with-libtorch         Enable libtorch the machine learning framework needed for NequIP and Allegro
                           Default = no
 
 FURTHER INSTRUCTIONS
@@ -305,17 +307,17 @@ with_cosma="__INSTALL__"
 with_libvori="__INSTALL__"
 with_libtorch="__DONTUSE__"
 # for MPI, we try to detect system MPI variant
-if (command -v mpirun > /dev/null 2>&1); then
+if (command -v mpiexec > /dev/null 2>&1); then
   # check if we are dealing with openmpi, mpich or intelmpi
-  if (mpirun --version 2>&1 | grep -s -q "HYDRA"); then
+  if (mpiexec --version 2>&1 | grep -s -q "HYDRA"); then
     echo "MPI is detected and it appears to be MPICH"
     export MPI_MODE="mpich"
     with_mpich="__SYSTEM__"
-  elif (mpirun --version 2>&1 | grep -s -q "Open MPI"); then
+  elif (mpiexec --version 2>&1 | grep -s -q "OpenRTE"); then
     echo "MPI is detected and it appears to be OpenMPI"
     export MPI_MODE="openmpi"
     with_openmpi="__SYSTEM__"
-  elif (mpirun --version 2>&1 | grep -s -q "Intel"); then
+  elif (mpiexec --version 2>&1 | grep -s -q "Intel"); then
     echo "MPI is detected and it appears to be Intel MPI"
     with_gcc="__DONTUSE__"
     with_intel="__SYSTEM__"
@@ -338,6 +340,7 @@ enable_tsan="__FALSE__"
 enable_opencl="__FALSE__"
 enable_cuda="__FALSE__"
 enable_hip="__FALSE__"
+export intel_classic="no"
 export GPUVER="no"
 export MPICH_DEVICE="ch3"
 export TARGET_CPU="native"
@@ -392,7 +395,7 @@ while [ $# -ge 1 ]; do
       export NPROCS_OVERWRITE="${1#-j}"
       ;;
     --no-check-certificate)
-      export DOWNLOADER_FLAGS="-n"
+      export DOWNLOADER_FLAGS="--no-check-certificate"
       ;;
     --install-all)
       # set all package to the default installation status
@@ -541,6 +544,9 @@ while [ $# -ge 1 ]; do
       if [ "${with_intelmpi}" != "__DONTUSE__" ]; then
         export MPI_MODE=intelmpi
       fi
+      ;;
+    --with-intel-classic*)
+      intel_classic=$(read_with "${1}" "yes")
       ;;
     --with-intel*)
       with_intel=$(read_with "${1}" "__SYSTEM__")
@@ -836,7 +842,7 @@ if [ "${ENABLE_CRAY}" = "__TRUE__" ]; then
   export MPICC="${CC}"
   export MPICXX="${CXX}"
   export MPIFC="${FC}"
-  export MPIF90="${MPIFC}"
+  export MPIFORT="${MPIFC}"
   export MPIF77="${MPIFC}"
   # CRAY libsci should contains core math libraries, scalapack
   # doesn't need LDFLAGS or CFLAGS, nor do the one need to

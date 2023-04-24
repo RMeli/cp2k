@@ -8,8 +8,7 @@
 MODULE qs_tddfpt2_utils
    USE cell_types,                      ONLY: cell_type
    USE cp_array_utils,                  ONLY: cp_1d_r_p_type
-   USE cp_blacs_env,                    ONLY: cp_blacs_env_type,&
-                                              get_blacs_info
+   USE cp_blacs_env,                    ONLY: cp_blacs_env_type
    USE cp_control_types,                ONLY: dft_control_type,&
                                               tddfpt2_control_type
    USE cp_dbcsr_operations,             ONLY: copy_dbcsr_to_fm,&
@@ -32,7 +31,6 @@ MODULE qs_tddfpt2_utils
    USE cp_log_handling,                 ONLY: cp_get_default_logger,&
                                               cp_logger_get_default_io_unit,&
                                               cp_logger_type
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE dbcsr_api,                       ONLY: dbcsr_add,&
                                               dbcsr_copy,&
                                               dbcsr_get_info,&
@@ -52,8 +50,7 @@ MODULE qs_tddfpt2_utils
                                               section_vals_val_get
    USE kinds,                           ONLY: dp,&
                                               int_8
-   USE message_passing,                 ONLY: mp_min,&
-                                              mp_sum
+   USE message_passing,                 ONLY: mp_para_env_type
    USE parallel_gemm_api,               ONLY: parallel_gemm
    USE physcon,                         ONLY: evolt
    USE qs_environment_types,            ONLY: get_qs_env,&
@@ -208,12 +205,7 @@ CONTAINS
          DEALLOCATE (evals_virt)
       END IF
 
-      IF (ALLOCATED(mos_virt)) THEN
-         DO ispin = 1, SIZE(mos_virt)
-            CALL cp_fm_release(mos_virt(ispin))
-         END DO
-         DEALLOCATE (mos_virt)
-      END IF
+      CALL cp_fm_release(mos_virt)
 
       CALL timestop(handle)
 
@@ -272,8 +264,8 @@ CONTAINS
                                                             work_fm_virt
       TYPE(cp_fm_type), POINTER                          :: mo_coeff_extended
       TYPE(cp_logger_type), POINTER                      :: logger
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(mo_set_type), POINTER                         :: mos_extended
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(section_vals_type), POINTER                   :: print_section
 
       CALL timeset(routineN, handle)
@@ -282,7 +274,7 @@ CONTAINS
       logger => cp_get_default_logger()
       iounit = cp_logger_get_default_io_unit(logger)
 
-      CALL get_blacs_info(blacs_env, para_env=para_env)
+      CALL blacs_env%get(para_env=para_env)
 
       CALL get_mo_set(mo_set, nao=nao, nmo=nmo_scf, homo=nmo_occ, maxocc=maxocc, &
                       nelectron=nelectrons, occupation_numbers=mo_occ_scf)
@@ -425,9 +417,9 @@ CONTAINS
          END DO
       END DO
 
-      CALL mp_sum(sum_sign_array, para_env%group)
-      CALL mp_min(minrow_neg_array, para_env%group)
-      CALL mp_min(minrow_pos_array, para_env%group)
+      CALL para_env%sum(sum_sign_array)
+      CALL para_env%min(minrow_neg_array)
+      CALL para_env%min(minrow_pos_array)
 
       DO icol_local = 1, nmo_occ
          IF (sum_sign_array(icol_local) > 0) THEN
@@ -507,9 +499,9 @@ CONTAINS
             END DO
          END DO
 
-         CALL mp_sum(sum_sign_array, para_env%group)
-         CALL mp_min(minrow_neg_array, para_env%group)
-         CALL mp_min(minrow_pos_array, para_env%group)
+         CALL para_env%sum(sum_sign_array)
+         CALL para_env%min(minrow_neg_array)
+         CALL para_env%min(minrow_pos_array)
          DO icol_local = 1, nmo_virt
             IF (sum_sign_array(icol_local) > 0) THEN
                ! most of the expansion coefficients are positive => MO's phase = +1
@@ -938,8 +930,8 @@ CONTAINS
    SUBROUTINE tddfpt_guess_vectors(evects, evals, gs_mos, log_unit)
       TYPE(cp_fm_type), DIMENSION(:, :), INTENT(inout)   :: evects
       REAL(kind=dp), DIMENSION(:), INTENT(inout)         :: evals
-      TYPE(tddfpt_ground_state_mos), DIMENSION(:), &
-         INTENT(in)                                      :: gs_mos
+      TYPE(tddfpt_ground_state_mos), &
+         DIMENSION(SIZE(evects, 1)), INTENT(in)          :: gs_mos
       INTEGER, INTENT(in)                                :: log_unit
 
       CHARACTER(LEN=*), PARAMETER :: routineN = 'tddfpt_guess_vectors'
@@ -964,7 +956,6 @@ CONTAINS
       IF (debug_this_module) THEN
          CPASSERT(nstates > 0)
          CPASSERT(nspins == 1 .OR. nspins == 2)
-         CPASSERT(SIZE(gs_mos) == nspins)
       END IF
 
       DO ispin = 1, nspins

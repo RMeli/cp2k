@@ -22,9 +22,8 @@
 !> \author Joost VandeVondele
 ! **************************************************************************************************
 MODULE reference_manager
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE kinds,                           ONLY: default_string_length
-   USE message_passing,                 ONLY: mp_max
+   USE message_passing,                 ONLY: mp_para_env_type
    USE util,                            ONLY: sort
 #include "../base/base_uses.f90"
 
@@ -53,19 +52,19 @@ MODULE reference_manager
    TYPE reference_type
       PRIVATE
       ! the reference in a format as returned by the web of science
-      CHARACTER(LEN=ISI_length), DIMENSION(:), POINTER :: ISI_record
+      CHARACTER(LEN=ISI_length), DIMENSION(:), POINTER :: ISI_record => NULL()
       ! the doi only, i.e. without "https://doi.org/"
-      CHARACTER(LEN=doi_length)                        :: DOI
+      CHARACTER(LEN=doi_length)                        :: DOI = ""
       ! has this reference been cited in the program run
-      LOGICAL                                          :: is_cited
+      LOGICAL                                          :: is_cited = .FALSE.
       ! this is a citation key for output in the reference lists
-      CHARACTER(LEN=ISI_length)                        :: citation_key
+      CHARACTER(LEN=ISI_length)                        :: citation_key = ""
    END TYPE reference_type
 
    ! useful to build arrays
 ! **************************************************************************************************
    TYPE reference_p_type
-      TYPE(reference_type), POINTER :: ref
+      TYPE(reference_type), POINTER :: ref => NULL()
    END TYPE
 
    ! thebibliography
@@ -101,14 +100,14 @@ CONTAINS
 !>      12.2013 created [Ole Schuett]
 ! **************************************************************************************************
    SUBROUTINE collect_citations_from_ranks(para_env)
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), INTENT(IN)                 :: para_env
 
       INTEGER                                            :: i, t
 
       DO i = 1, nbib
          t = 0
          IF (thebib(i)%ref%is_cited) t = 1
-         CALL mp_max(t, para_env%group)
+         CALL para_env%max(t)
          thebib(i)%ref%is_cited = (t == 1)
       END DO
 
@@ -130,8 +129,8 @@ CONTAINS
 ! **************************************************************************************************
    SUBROUTINE add_reference(key, ISI_record, DOI)
       INTEGER, INTENT(OUT)                               :: key
-      CHARACTER(LEN=*), DIMENSION(:)                     :: ISI_record
-      CHARACTER(LEN=*)                                   :: DOI
+      CHARACTER(LEN=*), DIMENSION(:), INTENT(IN)         :: ISI_record
+      CHARACTER(LEN=*), INTENT(IN)                       :: DOI
 
       CHARACTER                                          :: tmp
       CHARACTER(LEN=ISI_length)                          :: author, citation_key, year
@@ -493,7 +492,8 @@ CONTAINS
 !>      08.2007 created [Joost VandeVondele]
 ! **************************************************************************************************
    FUNCTION get_next_author(ISI_record, iline_start) RESULT(res)
-      CHARACTER(LEN=ISI_length), DIMENSION(:), POINTER   :: ISI_record
+      CHARACTER(LEN=ISI_length), DIMENSION(:), &
+         INTENT(IN)                                      :: ISI_record
       INTEGER, INTENT(INOUT)                             :: iline_start
       CHARACTER(LEN=ISI_length)                          :: res
 
@@ -527,7 +527,8 @@ CONTAINS
 !> \return ...
 ! **************************************************************************************************
    FUNCTION get_next_title(ISI_record, iline_start) RESULT(res)
-      CHARACTER(LEN=ISI_length), DIMENSION(:), POINTER   :: ISI_record
+      CHARACTER(LEN=ISI_length), DIMENSION(:), &
+         INTENT(IN)                                      :: ISI_record
       INTEGER, INTENT(INOUT)                             :: iline_start
       CHARACTER(LEN=ISI_length)                          :: res
 
@@ -558,8 +559,9 @@ CONTAINS
 !> \param ISI_record ...
 !> \return ...
 ! **************************************************************************************************
-   FUNCTION get_source(ISI_record) RESULT(res)
-      CHARACTER(LEN=ISI_length), DIMENSION(:), POINTER   :: ISI_record
+   PURE FUNCTION get_source(ISI_record) RESULT(res)
+      CHARACTER(LEN=ISI_length), DIMENSION(:), &
+         INTENT(IN)                                      :: ISI_record
       CHARACTER(LEN=4*ISI_length)                        :: res
 
       INTEGER                                            :: I, J, N
@@ -586,8 +588,9 @@ CONTAINS
 !> \param ISI_record ...
 !> \return ...
 ! **************************************************************************************************
-   FUNCTION get_year(ISI_record) RESULT(res)
-      CHARACTER(LEN=ISI_length), DIMENSION(:), POINTER   :: ISI_record
+   PURE FUNCTION get_year(ISI_record) RESULT(res)
+      CHARACTER(LEN=ISI_length), DIMENSION(:), &
+         INTENT(IN)                                      :: ISI_record
       CHARACTER(LEN=ISI_length)                          :: res
 
       INTEGER                                            :: I, N
@@ -604,8 +607,9 @@ CONTAINS
 !> \param ISI_record ...
 !> \return ...
 ! **************************************************************************************************
-   FUNCTION get_month(ISI_record) RESULT(res)
-      CHARACTER(LEN=ISI_length), DIMENSION(:), POINTER   :: ISI_record
+   PURE FUNCTION get_month(ISI_record) RESULT(res)
+      CHARACTER(LEN=ISI_length), DIMENSION(:), &
+         INTENT(IN)                                      :: ISI_record
       CHARACTER(LEN=ISI_length)                          :: res
 
       INTEGER                                            :: I, N
@@ -622,8 +626,9 @@ CONTAINS
 !> \param ISI_record ...
 !> \return ...
 ! **************************************************************************************************
-   FUNCTION get_day(ISI_record) RESULT(res)
-      CHARACTER(LEN=ISI_length), DIMENSION(:), POINTER   :: ISI_record
+   PURE FUNCTION get_day(ISI_record) RESULT(res)
+      CHARACTER(LEN=ISI_length), DIMENSION(:), &
+         INTENT(IN)                                      :: ISI_record
       CHARACTER(LEN=ISI_length)                          :: res
 
       INTEGER                                            :: D, I, N
@@ -648,8 +653,9 @@ CONTAINS
 !> \param ISI_record ...
 !> \return ...
 ! **************************************************************************************************
-   FUNCTION get_volume(ISI_record) RESULT(res)
-      CHARACTER(LEN=ISI_length), DIMENSION(:), POINTER   :: ISI_record
+   PURE FUNCTION get_volume(ISI_record) RESULT(res)
+      CHARACTER(LEN=ISI_length), DIMENSION(:), &
+         INTENT(IN)                                      :: ISI_record
       CHARACTER(LEN=ISI_length)                          :: res
 
       INTEGER                                            :: I, N
@@ -666,8 +672,9 @@ CONTAINS
 !> \param ISI_record ...
 !> \return ...
 ! **************************************************************************************************
-   FUNCTION get_issue(ISI_record) RESULT(res)
-      CHARACTER(LEN=ISI_length), DIMENSION(:), POINTER   :: ISI_record
+   PURE FUNCTION get_issue(ISI_record) RESULT(res)
+      CHARACTER(LEN=ISI_length), DIMENSION(:), &
+         INTENT(IN)                                      :: ISI_record
       CHARACTER(LEN=ISI_length)                          :: res
 
       INTEGER                                            :: I, N
@@ -684,8 +691,9 @@ CONTAINS
 !> \param ISI_record ...
 !> \return ...
 ! **************************************************************************************************
-   FUNCTION get_pages(ISI_record) RESULT(res)
-      CHARACTER(LEN=ISI_length), DIMENSION(:), POINTER   :: ISI_record
+   PURE FUNCTION get_pages(ISI_record) RESULT(res)
+      CHARACTER(LEN=ISI_length), DIMENSION(:), &
+         INTENT(IN)                                      :: ISI_record
       CHARACTER(LEN=ISI_length)                          :: res
 
       CHARACTER(LEN=ISI_length)                          :: ar, bp, ep
@@ -714,8 +722,8 @@ CONTAINS
 !> \param key ...
 !> \return ...
 ! **************************************************************************************************
-   FUNCTION get_citation_key(key) RESULT(res)
-      INTEGER                                            :: key
+   PURE FUNCTION get_citation_key(key) RESULT(res)
+      INTEGER, INTENT(IN)                                :: key
       CHARACTER(LEN=default_string_length)               :: res
 
       res = thebib(key)%ref%citation_key
@@ -730,8 +738,9 @@ CONTAINS
 !> \param ISI_record ...
 !> \return ...
 ! **************************************************************************************************
-   FUNCTION get_epoch(ISI_record) RESULT(res)
-      CHARACTER(LEN=ISI_length), DIMENSION(:), POINTER   :: ISI_record
+   PURE FUNCTION get_epoch(ISI_record) RESULT(res)
+      CHARACTER(LEN=ISI_length), DIMENSION(:), &
+         INTENT(IN)                                      :: ISI_record
       INTEGER                                            :: res
 
       CHARACTER(LEN=ISI_length)                          :: tmp

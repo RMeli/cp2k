@@ -19,7 +19,6 @@ MODULE negf_env_types
    USE cp_fm_types,                     ONLY: cp_fm_create,&
                                               cp_fm_release,&
                                               cp_fm_type
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE dbcsr_api,                       ONLY: dbcsr_copy,&
                                               dbcsr_deallocate_matrix,&
                                               dbcsr_init_p,&
@@ -38,7 +37,7 @@ MODULE negf_env_types
                                               get_kpoint_info,&
                                               kpoint_env_p_type,&
                                               kpoint_type
-   USE message_passing,                 ONLY: mp_sum
+   USE message_passing,                 ONLY: mp_para_env_type
    USE negf_atom_map,                   ONLY: negf_atom_map_type,&
                                               negf_map_atomic_indices
    USE negf_control_types,              ONLY: negf_control_contact_type,&
@@ -399,11 +398,11 @@ CONTAINS
       INTEGER, DIMENSION(:, :, :), POINTER               :: cell_to_index
       LOGICAL                                            :: do_kpoints
       TYPE(cp_fm_struct_type), POINTER                   :: fm_struct
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_p_type), DIMENSION(:, :), POINTER       :: matrix_ks_kp, matrix_s_kp, rho_ao_kp
       TYPE(dbcsr_type), POINTER                          :: matrix_s_ref
       TYPE(dft_control_type), POINTER                    :: dft_control
       TYPE(kpoint_type), POINTER                         :: kpoints
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(qs_rho_type), POINTER                         :: rho_struct
       TYPE(qs_subsys_type), POINTER                      :: subsys
 
@@ -495,7 +494,7 @@ CONTAINS
                                     matrix_kp=matrix_s_kp(1, :), &
                                     index_to_cell=index_to_cell, &
                                     atom_list0=atom_list0, atom_list1=atom_list1, &
-                                    subsys=subsys, mpi_comm_global=para_env%group, &
+                                    subsys=subsys, mpi_comm_global=para_env, &
                                     is_same_cell=is_same_cell, matrix_ref=matrix_s_ref)
 
       ! extract matrices: h_00, h_01, rho_00, rho_01
@@ -506,7 +505,7 @@ CONTAINS
                                        matrix_kp=matrix_ks_kp(ispin, :), &
                                        index_to_cell=index_to_cell, &
                                        atom_list0=atom_list0, atom_list1=atom_list1, &
-                                       subsys=subsys, mpi_comm_global=para_env%group, &
+                                       subsys=subsys, mpi_comm_global=para_env, &
                                        is_same_cell=is_same_cell)
 
          CALL negf_copy_contact_matrix(fm_cell0=contact_env%rho_00(ispin), &
@@ -515,7 +514,7 @@ CONTAINS
                                        matrix_kp=rho_ao_kp(ispin, :), &
                                        index_to_cell=index_to_cell, &
                                        atom_list0=atom_list0, atom_list1=atom_list1, &
-                                       subsys=subsys, mpi_comm_global=para_env%group, &
+                                       subsys=subsys, mpi_comm_global=para_env, &
                                        is_same_cell=is_same_cell)
       END DO
 
@@ -551,9 +550,9 @@ CONTAINS
       REAL(kind=dp), DIMENSION(2)                        :: r2_origin_cell
       REAL(kind=dp), DIMENSION(3)                        :: direction_vector, origin
       TYPE(cp_fm_struct_type), POINTER                   :: fm_struct
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_p_type), DIMENSION(:, :), POINTER       :: matrix_ks_kp, matrix_s_kp, rho_ao_kp
       TYPE(dft_control_type), POINTER                    :: dft_control
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
       TYPE(qs_rho_type), POINTER                         :: rho_struct
       TYPE(qs_subsys_type), POINTER                      :: subsys
@@ -653,26 +652,26 @@ CONTAINS
                                                fm=contact_env%h_00(ispin), &
                                                atomlist_row=contact_env%atomlist_cell0, &
                                                atomlist_col=contact_env%atomlist_cell0, &
-                                               subsys=subsys, mpi_comm_global=para_env%group, &
+                                               subsys=subsys, mpi_comm_global=para_env, &
                                                do_upper_diag=.TRUE., do_lower=.TRUE.)
          CALL negf_copy_sym_dbcsr_to_fm_submat(matrix=matrix_ks_kp(ispin, 1)%matrix, &
                                                fm=contact_env%h_01(ispin), &
                                                atomlist_row=contact_env%atomlist_cell0, &
                                                atomlist_col=contact_env%atomlist_cell1, &
-                                               subsys=subsys, mpi_comm_global=para_env%group, &
+                                               subsys=subsys, mpi_comm_global=para_env, &
                                                do_upper_diag=.TRUE., do_lower=.TRUE.)
 
          CALL negf_copy_sym_dbcsr_to_fm_submat(matrix=rho_ao_kp(ispin, 1)%matrix, &
                                                fm=contact_env%rho_00(ispin), &
                                                atomlist_row=contact_env%atomlist_cell0, &
                                                atomlist_col=contact_env%atomlist_cell0, &
-                                               subsys=subsys, mpi_comm_global=para_env%group, &
+                                               subsys=subsys, mpi_comm_global=para_env, &
                                                do_upper_diag=.TRUE., do_lower=.TRUE.)
          CALL negf_copy_sym_dbcsr_to_fm_submat(matrix=rho_ao_kp(ispin, 1)%matrix, &
                                                fm=contact_env%rho_01(ispin), &
                                                atomlist_row=contact_env%atomlist_cell0, &
                                                atomlist_col=contact_env%atomlist_cell1, &
-                                               subsys=subsys, mpi_comm_global=para_env%group, &
+                                               subsys=subsys, mpi_comm_global=para_env, &
                                                do_upper_diag=.TRUE., do_lower=.TRUE.)
       END DO
 
@@ -680,13 +679,13 @@ CONTAINS
                                             fm=contact_env%s_00, &
                                             atomlist_row=contact_env%atomlist_cell0, &
                                             atomlist_col=contact_env%atomlist_cell0, &
-                                            subsys=subsys, mpi_comm_global=para_env%group, &
+                                            subsys=subsys, mpi_comm_global=para_env, &
                                             do_upper_diag=.TRUE., do_lower=.TRUE.)
       CALL negf_copy_sym_dbcsr_to_fm_submat(matrix=matrix_s_kp(1, 1)%matrix, &
                                             fm=contact_env%s_01, &
                                             atomlist_row=contact_env%atomlist_cell0, &
                                             atomlist_col=contact_env%atomlist_cell1, &
-                                            subsys=subsys, mpi_comm_global=para_env%group, &
+                                            subsys=subsys, mpi_comm_global=para_env, &
                                             do_upper_diag=.TRUE., do_lower=.TRUE.)
 
       CALL timestop(handle)
@@ -713,10 +712,10 @@ CONTAINS
                                                             ncontacts, nspins
       LOGICAL                                            :: do_kpoints
       TYPE(cp_fm_struct_type), POINTER                   :: fm_struct
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_p_type)                                 :: hmat
       TYPE(dbcsr_p_type), DIMENSION(:, :), POINTER       :: matrix_ks_kp, matrix_s_kp
       TYPE(dft_control_type), POINTER                    :: dft_control
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(pw_env_type), POINTER                         :: pw_env
       TYPE(pw_pool_type), POINTER                        :: pw_pool
       TYPE(pw_type)                                      :: v_hartree
@@ -781,7 +780,7 @@ CONTAINS
                                                   fm=negf_env%h_s(ispin), &
                                                   atomlist_row=negf_control%atomlist_S_screening, &
                                                   atomlist_col=negf_control%atomlist_S_screening, &
-                                                  subsys=subsys, mpi_comm_global=para_env%group, &
+                                                  subsys=subsys, mpi_comm_global=para_env, &
                                                   do_upper_diag=.TRUE., do_lower=.TRUE.)
          END DO
 
@@ -789,7 +788,7 @@ CONTAINS
                                                fm=negf_env%s_s, &
                                                atomlist_row=negf_control%atomlist_S_screening, &
                                                atomlist_col=negf_control%atomlist_S_screening, &
-                                               subsys=subsys, mpi_comm_global=para_env%group, &
+                                               subsys=subsys, mpi_comm_global=para_env, &
                                                do_upper_diag=.TRUE., do_lower=.TRUE.)
 
          ! v_hartree_s
@@ -810,7 +809,7 @@ CONTAINS
                                                fm=negf_env%v_hartree_s, &
                                                atomlist_row=negf_control%atomlist_S_screening, &
                                                atomlist_col=negf_control%atomlist_S_screening, &
-                                               subsys=subsys, mpi_comm_global=para_env%group, &
+                                               subsys=subsys, mpi_comm_global=para_env, &
                                                do_upper_diag=.TRUE., do_lower=.TRUE.)
 
          CALL dbcsr_deallocate_matrix(hmat%matrix)
@@ -822,7 +821,7 @@ CONTAINS
                                                      fm=negf_env%h_sc(ispin, icontact), &
                                                      atomlist_row=negf_control%atomlist_S_screening, &
                                                      atomlist_col=negf_env%contacts(icontact)%atomlist_cell0, &
-                                                     subsys=subsys, mpi_comm_global=para_env%group, &
+                                                     subsys=subsys, mpi_comm_global=para_env, &
                                                      do_upper_diag=.TRUE., do_lower=.TRUE.)
             END DO
 
@@ -830,7 +829,7 @@ CONTAINS
                                                   fm=negf_env%s_sc(icontact), &
                                                   atomlist_row=negf_control%atomlist_S_screening, &
                                                   atomlist_col=negf_env%contacts(icontact)%atomlist_cell0, &
-                                                  subsys=subsys, mpi_comm_global=para_env%group, &
+                                                  subsys=subsys, mpi_comm_global=para_env, &
                                                   do_upper_diag=.TRUE., do_lower=.TRUE.)
          END DO
       END IF
@@ -986,11 +985,11 @@ CONTAINS
       LOGICAL                                            :: do_kpoints
       REAL(kind=dp)                                      :: my_homo_energy
       REAL(kind=dp), DIMENSION(:), POINTER               :: eigenvalues
-      TYPE(cp_para_env_type), POINTER                    :: para_env, para_env_kp
       TYPE(kpoint_env_p_type), DIMENSION(:), POINTER     :: kp_env
       TYPE(kpoint_type), POINTER                         :: kpoints
       TYPE(mo_set_type), DIMENSION(:), POINTER           :: mos
       TYPE(mo_set_type), DIMENSION(:, :), POINTER        :: mos_kp
+      TYPE(mp_para_env_type), POINTER                    :: para_env, para_env_kp
 
       CALL timeset(routineN, handle)
       my_homo_energy = 0.0_dp
@@ -1017,7 +1016,7 @@ CONTAINS
             END DO
          END IF
 
-         CALL mp_sum(my_homo_energy, para_env%group)
+         CALL para_env%sum(my_homo_energy)
       ELSE
          ! Hamiltonian of the bulk contact region has been computed without k-points.
          ! Try to obtain the HOMO energy assuming there is no OT. We probably should abort here
@@ -1217,7 +1216,7 @@ CONTAINS
 
       CHARACTER(len=*), PARAMETER                        :: routineN = 'negf_env_release'
 
-      INTEGER                                            :: handle, icontact, ispin, nspins
+      INTEGER                                            :: handle, icontact
 
       CALL timeset(routineN, handle)
 
@@ -1230,23 +1229,10 @@ CONTAINS
       END IF
 
       ! h_s
-      IF (ALLOCATED(negf_env%h_s)) THEN
-         DO ispin = SIZE(negf_env%h_s), 1, -1
-            CALL cp_fm_release(negf_env%h_s(ispin))
-         END DO
-         DEALLOCATE (negf_env%h_s)
-      END IF
+      CALL cp_fm_release(negf_env%h_s)
 
       ! h_sc
-      IF (ALLOCATED(negf_env%h_sc)) THEN
-         nspins = SIZE(negf_env%h_sc, 1)
-         DO icontact = SIZE(negf_env%h_sc, 2), 1, -1
-            DO ispin = nspins, 1, -1
-               CALL cp_fm_release(negf_env%h_sc(ispin, icontact))
-            END DO
-         END DO
-         DEALLOCATE (negf_env%h_sc)
-      END IF
+      CALL cp_fm_release(negf_env%h_sc)
 
       ! s_s
       IF (ASSOCIATED(negf_env%s_s)) THEN
@@ -1256,12 +1242,7 @@ CONTAINS
       END IF
 
       ! s_sc
-      IF (ALLOCATED(negf_env%s_sc)) THEN
-         DO icontact = SIZE(negf_env%s_sc), 1, -1
-            CALL cp_fm_release(negf_env%s_sc(icontact))
-         END DO
-         DEALLOCATE (negf_env%s_sc)
-      END IF
+      CALL cp_fm_release(negf_env%s_sc)
 
       ! v_hartree_s
       IF (ASSOCIATED(negf_env%v_hartree_s)) THEN
@@ -1288,41 +1269,21 @@ CONTAINS
 
       CHARACTER(len=*), PARAMETER :: routineN = 'negf_env_contact_release'
 
-      INTEGER                                            :: handle, ispin
+      INTEGER                                            :: handle
 
       CALL timeset(routineN, handle)
 
       ! h_00
-      IF (ALLOCATED(contact_env%h_00)) THEN
-         DO ispin = SIZE(contact_env%h_00), 1, -1
-            CALL cp_fm_release(contact_env%h_00(ispin))
-         END DO
-         DEALLOCATE (contact_env%h_00)
-      END IF
+      CALL cp_fm_release(contact_env%h_00)
 
       ! h_01
-      IF (ALLOCATED(contact_env%h_01)) THEN
-         DO ispin = SIZE(contact_env%h_01), 1, -1
-            CALL cp_fm_release(contact_env%h_01(ispin))
-         END DO
-         DEALLOCATE (contact_env%h_01)
-      END IF
+      CALL cp_fm_release(contact_env%h_01)
 
       ! rho_00
-      IF (ALLOCATED(contact_env%rho_00)) THEN
-         DO ispin = SIZE(contact_env%rho_00), 1, -1
-            CALL cp_fm_release(contact_env%rho_00(ispin))
-         END DO
-         DEALLOCATE (contact_env%rho_00)
-      END IF
+      CALL cp_fm_release(contact_env%rho_00)
 
       ! rho_01
-      IF (ALLOCATED(contact_env%rho_01)) THEN
-         DO ispin = SIZE(contact_env%rho_01), 1, -1
-            CALL cp_fm_release(contact_env%rho_01(ispin))
-         END DO
-         DEALLOCATE (contact_env%rho_01)
-      END IF
+      CALL cp_fm_release(contact_env%rho_01)
 
       ! s_00
       IF (ASSOCIATED(contact_env%s_00)) THEN

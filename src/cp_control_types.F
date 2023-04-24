@@ -66,6 +66,7 @@ MODULE cp_control_types
       INTEGER, DIMENSION(3)                :: delta_pulse_direction
       REAL(KIND=dp)                        :: delta_pulse_scale
       LOGICAL                              :: velocity_gauge
+      REAL(KIND=dp), DIMENSION(3)          :: vec_pot
       LOGICAL                              :: nl_gauge_transform
    END TYPE rtp_control_type
 ! **************************************************************************************************
@@ -193,13 +194,14 @@ MODULE cp_control_types
 ! **************************************************************************************************
    TYPE efield_type
       REAL(KIND=dp)                        :: actual_time
-      REAL(KIND=dp), DIMENSION(:), POINTER :: polarisation
+      REAL(KIND=dp), DIMENSION(:), POINTER :: polarisation => NULL()
       INTEGER                              :: envelop_id
-      REAL(KIND=dp), DIMENSION(:), POINTER :: envelop_r_vars
+      REAL(KIND=dp), DIMENSION(:), POINTER :: envelop_r_vars => NULL()
       INTEGER, DIMENSION(:), POINTER       :: envelop_i_vars
       REAL(KIND=dp)                        :: strength
       REAL(KIND=dp)                        :: phase_offset
       REAL(KIND=dp)                        :: wavelength
+      REAL(KIND=dp), DIMENSION(3)          :: vec_pot_initial = 0.0_dp
    END TYPE efield_type
 
    TYPE efield_p_type
@@ -565,6 +567,7 @@ MODULE cp_control_types
                                               dft_plus_u, &
                                               apply_efield, &
                                               apply_efield_field, &
+                                              apply_vector_potential, &
                                               apply_period_efield, &
                                               apply_external_potential, &
                                               eval_external_potential, &
@@ -869,15 +872,8 @@ CONTAINS
    SUBROUTINE tddfpt_control_release(tddfpt_control)
       TYPE(tddfpt_control_type), POINTER                 :: tddfpt_control
 
-      INTEGER                                            :: ispin
-
       IF (ASSOCIATED(tddfpt_control)) THEN
-         IF (ASSOCIATED(tddfpt_control%lumos)) THEN
-            DO ispin = 1, SIZE(tddfpt_control%lumos)
-               CALL cp_fm_release(tddfpt_control%lumos(ispin))
-            END DO
-            DEALLOCATE (tddfpt_control%lumos)
-         END IF
+         CALL cp_fm_release(tddfpt_control%lumos)
          IF (ASSOCIATED(tddfpt_control%lumos_eigenvalues)) THEN
             DEALLOCATE (tddfpt_control%lumos_eigenvalues)
          END IF
@@ -946,9 +942,8 @@ CONTAINS
                IF (ASSOCIATED(efield_fields(i)%efield%envelop_i_vars)) THEN
                   DEALLOCATE (efield_fields(i)%efield%envelop_i_vars)
                END IF
-               IF (ASSOCIATED(efield_fields(i)%efield%polarisation)) THEN
+               IF (ASSOCIATED(efield_fields(i)%efield%polarisation)) &
                   DEALLOCATE (efield_fields(i)%efield%polarisation)
-               END IF
                DEALLOCATE (efield_fields(i)%efield)
             END IF
          END DO

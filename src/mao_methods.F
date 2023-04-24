@@ -32,7 +32,6 @@ MODULE mao_methods
    USE cp_fm_types,                     ONLY: cp_fm_create,&
                                               cp_fm_release,&
                                               cp_fm_type
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE dbcsr_api,                       ONLY: &
         dbcsr_create, dbcsr_desymmetrize, dbcsr_distribution_type, dbcsr_dot, dbcsr_get_block_p, &
         dbcsr_get_info, dbcsr_iterator_blocks_left, dbcsr_iterator_next_block, &
@@ -50,7 +49,7 @@ MODULE mao_methods
    USE lapack,                          ONLY: lapack_ssyev,&
                                               lapack_ssygv
    USE message_passing,                 ONLY: mp_comm_type,&
-                                              mp_sum
+                                              mp_para_env_type
    USE particle_types,                  ONLY: particle_type
    USE qs_environment_types,            ONLY: get_qs_env,&
                                               qs_environment_type
@@ -161,7 +160,7 @@ CONTAINS
                mao_blk(iatom) = m
             END IF
          END DO
-         CALL mp_sum(mao_blk, group)
+         CALL group%sum(mao_blk)
          CALL dbcsr_get_info(mao_coef, distribution=dbcsr_dist)
          CALL dbcsr_release(mao_coef)
          CALL dbcsr_create(mao_coef, name="MAO_COEF", dist=dbcsr_dist, &
@@ -195,7 +194,7 @@ CONTAINS
             IF (ASSOCIATED(mbl(iatom)%mat)) THEN
                w(1:n) = mbl(iatom)%eig(1:n)
             END IF
-            CALL mp_sum(w, group)
+            CALL group%sum(w)
             IF (iw > 0) THEN
                WRITE (iw, '(A,i2,20F8.4)', ADVANCE="NO") " Spectrum/Gap  ", iatom, w(1:m)
                WRITE (iw, '(A,F8.4)') " || ", w(m + 1)
@@ -427,7 +426,7 @@ CONTAINS
 
       CALL dbcsr_get_info(fmat1, group=group_handle)
       CALL group%set_handle(group_handle)
-      CALL mp_sum(spro, group)
+      CALL group%sum(spro)
 
    END FUNCTION mao_scalar_product
 
@@ -599,7 +598,7 @@ CONTAINS
          IF (print_basis) THEN
             DO ikind = 1, nkind
                basis_set => mao_basis_set_list(ikind)%gto_basis_set
-               CALL write_gto_basis_set(basis_set, unit_nr, "MAO REFERENCE BASIS")
+               IF (ASSOCIATED(basis_set)) CALL write_gto_basis_set(basis_set, unit_nr, "MAO REFERENCE BASIS")
             END DO
          END IF
       END IF
@@ -626,7 +625,7 @@ CONTAINS
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
       TYPE(qs_kind_type), DIMENSION(:), POINTER          :: qs_kind_set
       INTEGER, INTENT(IN)                                :: unit_nr
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
 
       CHARACTER(len=2)                                   :: element_symbol
       INTEGER                                            :: ia, iab, iatom, ikind, iset, ishell, &
@@ -680,7 +679,7 @@ CONTAINS
                   END DO
                END DO
             END IF
-            CALL mp_sum(weight, para_env%group)
+            CALL para_env%sum(weight)
             IF (unit_nr > 0) THEN
                DO ia = 1, na
                   IF (ispin == 1 .AND. ia == 1) THEN

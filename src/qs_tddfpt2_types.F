@@ -9,8 +9,7 @@ MODULE qs_tddfpt2_types
    USE admm_types,                      ONLY: admm_type,&
                                               get_admm_env
    USE atomic_kind_types,               ONLY: atomic_kind_type
-   USE cp_blacs_env,                    ONLY: cp_blacs_env_type,&
-                                              get_blacs_info
+   USE cp_blacs_env,                    ONLY: cp_blacs_env_type
    USE cp_control_types,                ONLY: dft_control_type
    USE cp_dbcsr_operations,             ONLY: cp_dbcsr_sm_fm_multiply,&
                                               dbcsr_allocate_matrix_set,&
@@ -26,8 +25,6 @@ MODULE qs_tddfpt2_types
    USE cp_fm_types,                     ONLY: cp_fm_create,&
                                               cp_fm_release,&
                                               cp_fm_type
-   USE cp_fm_vect,                      ONLY: cp_fm_vect_dealloc
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE dbcsr_api,                       ONLY: &
         dbcsr_complete_redistribute, dbcsr_create, dbcsr_deallocate_matrix, &
         dbcsr_distribution_type, dbcsr_get_info, dbcsr_init_p, dbcsr_p_type, dbcsr_release_p, &
@@ -41,6 +38,7 @@ MODULE qs_tddfpt2_types
                                               hartree_local_release,&
                                               hartree_local_type
    USE kinds,                           ONLY: dp
+   USE message_passing,                 ONLY: mp_para_env_type
    USE parallel_gemm_api,               ONLY: parallel_gemm
    USE pw_env_types,                    ONLY: pw_env_get
    USE pw_pool_types,                   ONLY: pw_pool_create_pw,&
@@ -169,6 +167,10 @@ MODULE qs_tddfpt2_types
       !> group-specific copy of a real-space grid for the kinetic energy density
       TYPE(pw_type), DIMENSION(:), POINTER             :: wpw_tau_rspace_sub
       !
+      ! *** real space pw grid to hold fxc kernel <> A_ia_rspace_sub ***
+      !
+      TYPE(pw_type), DIMENSION(:), POINTER             :: fxc_rspace_sub
+      !
       ! *** globally distributed matrices required to compute exact exchange terms ***
       !
       !> globally distributed version of the matrix 'rho_ao_orb_fm_sub' to store the electron density
@@ -210,18 +212,19 @@ CONTAINS
 !> \param do_hfx         flag that requested to allocate work matrices required for computation
 !>                       of exact-exchange terms
 !> \param do_admm ...
+!> \param do_exck ...
 !> \param qs_env         Quickstep environment
 !> \param sub_env        parallel group environment
 !> \par History
 !>    * 02.2017 created [Sergey Chulkov]
 ! **************************************************************************************************
-   SUBROUTINE tddfpt_create_work_matrices(work_matrices, gs_mos, nstates, do_hfx, do_admm, &
+   SUBROUTINE tddfpt_create_work_matrices(work_matrices, gs_mos, nstates, do_hfx, do_admm, do_exck, &
                                           qs_env, sub_env)
       TYPE(tddfpt_work_matrices), INTENT(out)            :: work_matrices
       TYPE(tddfpt_ground_state_mos), DIMENSION(:), &
          INTENT(in)                                      :: gs_mos
       INTEGER, INTENT(in)                                :: nstates
-      LOGICAL, INTENT(in)                                :: do_hfx, do_admm
+      LOGICAL, INTENT(in)                                :: do_hfx, do_admm, do_exck
       TYPE(qs_environment_type), POINTER                 :: qs_env
       TYPE(tddfpt_subgroup_env_type), INTENT(in)         :: sub_env
 
@@ -235,12 +238,12 @@ CONTAINS
       TYPE(cp_blacs_env_type), POINTER                   :: blacs_env
       TYPE(cp_fm_struct_p_type), DIMENSION(maxspins)     :: fm_struct_evects
       TYPE(cp_fm_struct_type), POINTER                   :: fm_struct
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_distribution_type), POINTER             :: dbcsr_dist
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: matrix_s, matrix_s_aux_fit, rho_ia_ao, &
                                                             rho_xc_ao
       TYPE(dbcsr_type), POINTER                          :: dbcsr_template_hfx
       TYPE(dft_control_type), POINTER                    :: dft_control
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(neighbor_list_set_p_type), DIMENSION(:), &
          POINTER                                         :: sab_hfx
       TYPE(pw_pool_type), POINTER                        :: auxbas_pw_pool
@@ -307,14 +310,13 @@ CONTAINS
 
       IF (sub_env%is_split) THEN
          DO ispin = 1, nspins
-            NULLIFY (fm_struct_evects(ispin)%struct)
             CALL cp_fm_struct_create(fm_struct_evects(ispin)%struct, nrow_global=nao, &
                                      ncol_global=nmo_occ(ispin), context=sub_env%blacs_env)
          END DO
 
          ALLOCATE (work_matrices%evects_sub(nspins, nstates), work_matrices%Aop_evects_sub(nspins, nstates))
 
-         CALL get_blacs_info(blacs_env, para_env=para_env)
+         CALL blacs_env%get(para_env=para_env)
          igroup = sub_env%group_distribution(para_env%mepos)
          ngroups = sub_env%ngroups
 
@@ -423,6 +425,18 @@ CONTAINS
                                 use_data=REALDATA3D, in_space=REALSPACE)
       END DO
 
+      ! fxc kernel potential real space grid
+      IF (do_exck) THEN
+         ! we need spins: aa, ab, bb
+         ALLOCATE (work_matrices%fxc_rspace_sub(3))
+         DO ispin = 1, 3
+            CALL pw_pool_create_pw(auxbas_pw_pool, work_matrices%fxc_rspace_sub(ispin), &
+                                   use_data=REALDATA3D, in_space=REALSPACE)
+         END DO
+      ELSE
+         NULLIFY (work_matrices%fxc_rspace_sub)
+      END IF
+
       ! GAPW initializations
       IF (dft_control%qs_control%gapw) THEN
          CALL get_qs_env(qs_env, &
@@ -529,8 +543,8 @@ CONTAINS
       TYPE(cp_blacs_env_type), POINTER                   :: blacs_env
       TYPE(cp_fm_struct_p_type), DIMENSION(maxspins)     :: fm_struct_evects
       TYPE(cp_fm_struct_type), POINTER                   :: fm_struct
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: matrix_s
+      TYPE(mp_para_env_type), POINTER                    :: para_env
 
       CALL timeset(routineN, handle)
 
@@ -572,7 +586,6 @@ CONTAINS
       END DO
 
       DO ispin = 1, nspins
-         NULLIFY (fm_struct_evects(ispin)%struct)
          CALL cp_fm_struct_create(fm_struct_evects(ispin)%struct, nrow_global=nao, &
                                   ncol_global=nmo_occ(ispin), context=sub_env%blacs_env)
       END DO
@@ -580,7 +593,7 @@ CONTAINS
       IF (sub_env%is_split) THEN
          ALLOCATE (work_matrices%evects_sub(nspins, nstates), work_matrices%Aop_evects_sub(nspins, nstates))
 
-         CALL get_blacs_info(blacs_env, para_env=para_env)
+         CALL blacs_env%get(para_env=para_env)
          igroup = sub_env%group_distribution(para_env%mepos)
          ngroups = sub_env%ngroups
 
@@ -621,6 +634,7 @@ CONTAINS
                work_matrices%hfx_rho_ao_asymm, work_matrices%hfx_hmat_asymm)
       NULLIFY (work_matrices%A_ia_rspace_sub, work_matrices%wpw_gspace_sub, &
                work_matrices%wpw_rspace_sub)
+      NULLIFY (work_matrices%fxc_rspace_sub)
       NULLIFY (work_matrices%A_ia_munu_sub)
 
       NULLIFY (work_matrices%ewald_env)
@@ -648,7 +662,7 @@ CONTAINS
 
       CHARACTER(LEN=*), PARAMETER :: routineN = 'tddfpt_release_work_matrices'
 
-      INTEGER                                            :: handle, ispin, istate
+      INTEGER                                            :: handle, ispin
       TYPE(pw_pool_type), POINTER                        :: auxbas_pw_pool
 
       CALL timeset(routineN, handle)
@@ -698,6 +712,12 @@ CONTAINS
          END DO
          DEALLOCATE (work_matrices%A_ia_rspace_sub, work_matrices%wpw_gspace_sub, &
                      work_matrices%wpw_rspace_sub, work_matrices%wpw_tau_rspace_sub)
+         IF (ASSOCIATED(work_matrices%fxc_rspace_sub)) THEN
+            DO ispin = SIZE(work_matrices%fxc_rspace_sub), 1, -1
+               CALL pw_pool_give_back_pw(auxbas_pw_pool, work_matrices%fxc_rspace_sub(ispin))
+            END DO
+            DEALLOCATE (work_matrices%fxc_rspace_sub)
+         END IF
       END IF
 
       IF (ASSOCIATED(work_matrices%rho_aux_fit_struct_sub)) THEN
@@ -732,21 +752,11 @@ CONTAINS
          NULLIFY (work_matrices%rho_ao_orb_fm_sub)
       END IF
 
-      IF (ALLOCATED(work_matrices%evects_sub)) THEN
-         DO istate = SIZE(work_matrices%evects_sub, 2), 1, -1
-            DO ispin = SIZE(work_matrices%evects_sub, 1), 1, -1
-               CALL cp_fm_release(work_matrices%Aop_evects_sub(ispin, istate))
-               CALL cp_fm_release(work_matrices%evects_sub(ispin, istate))
-            END DO
-         END DO
-         DEALLOCATE (work_matrices%Aop_evects_sub, work_matrices%evects_sub)
-      END IF
+      CALL cp_fm_release(work_matrices%Aop_evects_sub)
+      CALL cp_fm_release(work_matrices%evects_sub)
 
-      DO ispin = SIZE(work_matrices%fm_pool_ao_mo_occ), 1, -1
-         CALL cp_fm_release(work_matrices%S_C0(ispin))
-         CALL cp_fm_release(work_matrices%S_C0_C0T(ispin))
-      END DO
-      DEALLOCATE (work_matrices%S_C0, work_matrices%S_C0_C0T)
+      CALL cp_fm_release(work_matrices%S_C0)
+      CALL cp_fm_release(work_matrices%S_C0_C0T)
 
       DO ispin = SIZE(work_matrices%fm_pool_ao_mo_occ), 1, -1
          CALL fm_pool_release(work_matrices%fm_pool_ao_mo_occ(ispin)%pool)
@@ -759,7 +769,7 @@ CONTAINS
          NULLIFY (work_matrices%gamma_exchange)
       END IF
       IF (ASSOCIATED(work_matrices%ctransformed)) THEN
-         CALL cp_fm_vect_dealloc(work_matrices%ctransformed)
+         CALL cp_fm_release(work_matrices%ctransformed)
          NULLIFY (work_matrices%ctransformed)
       END IF
       CALL dbcsr_release_p(work_matrices%shalf)

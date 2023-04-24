@@ -15,17 +15,13 @@ MODULE negf_matrix_utils
                                               cp_fm_get_submatrix,&
                                               cp_fm_set_submatrix,&
                                               cp_fm_type
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE dbcsr_api,                       ONLY: &
         dbcsr_add, dbcsr_copy, dbcsr_deallocate_matrix, dbcsr_get_block_p, dbcsr_get_info, &
         dbcsr_init_p, dbcsr_p_type, dbcsr_set, dbcsr_type
    USE kinds,                           ONLY: dp
    USE message_passing,                 ONLY: mp_comm_type,&
-                                              mp_irecv,&
-                                              mp_isend,&
-                                              mp_request_type,&
-                                              mp_sum,&
-                                              mp_wait
+                                              mp_para_env_type,&
+                                              mp_request_type
    USE negf_alloc_types,                ONLY: negf_allocatable_rvector
    USE negf_atom_map,                   ONLY: negf_atom_map_type
    USE particle_methods,                ONLY: get_particle_set
@@ -186,18 +182,19 @@ CONTAINS
       TYPE(cp_fm_type), INTENT(IN)                       :: fm
       INTEGER, DIMENSION(:), INTENT(in)                  :: atomlist_row, atomlist_col
       TYPE(qs_subsys_type), POINTER                      :: subsys
-      TYPE(mp_comm_type), INTENT(in)                     :: mpi_comm_global
+
+      CLASS(mp_comm_type), INTENT(in)                     :: mpi_comm_global
       LOGICAL, INTENT(in)                                :: do_upper_diag, do_lower
 
       CHARACTER(LEN=*), PARAMETER :: routineN = 'negf_copy_sym_dbcsr_to_fm_submat'
 
       INTEGER :: handle, iatom_col, iatom_row, icol, irow, natoms_col, natoms_row, ncols_fm, &
-         nparticles, nrows_fm, offset_sgf_col, offset_sgf_row
+                 nparticles, nrows_fm, offset_sgf_col, offset_sgf_row
       INTEGER, ALLOCATABLE, DIMENSION(:)                 :: nsgfs
       LOGICAL                                            :: found
       REAL(kind=dp), ALLOCATABLE, DIMENSION(:, :)        :: r2d
       REAL(kind=dp), DIMENSION(:, :), POINTER            :: sm_block
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
       TYPE(qs_kind_type), DIMENSION(:), POINTER          :: qs_kind_set
 
@@ -267,7 +264,7 @@ CONTAINS
          offset_sgf_col = offset_sgf_col + nsgfs(atomlist_col(iatom_col))
       END DO
 
-      CALL mp_sum(r2d, mpi_comm_global)
+      CALL mpi_comm_global%sum(r2d)
 
       CALL cp_fm_set_submatrix(fm, r2d)
 
@@ -303,7 +300,8 @@ CONTAINS
       INTEGER, DIMENSION(:, :), INTENT(in)               :: index_to_cell
       INTEGER, DIMENSION(:), INTENT(in)                  :: atom_list0, atom_list1
       TYPE(qs_subsys_type), POINTER                      :: subsys
-      TYPE(mp_comm_type), INTENT(in)                     :: mpi_comm_global
+
+      CLASS(mp_comm_type), INTENT(in)                     :: mpi_comm_global
       INTEGER, DIMENSION(:, :), INTENT(inout)            :: is_same_cell
       TYPE(dbcsr_type), OPTIONAL, POINTER                :: matrix_ref
 
@@ -499,7 +497,7 @@ CONTAINS
       TYPE(dbcsr_type), POINTER                          :: matrix_contact, matrix_device
       INTEGER, DIMENSION(:), INTENT(in)                  :: atom_list
       TYPE(negf_atom_map_type), DIMENSION(:), INTENT(in) :: atom_map
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
 
       CHARACTER(LEN=*), PARAMETER :: routineN = 'negf_reference_contact_matrix'
 
@@ -550,8 +548,8 @@ CONTAINS
          END DO
       END DO
 
-      CALL mp_sum(rank_device, para_env%group)
-      CALL mp_sum(rank_contact, para_env%group)
+      CALL para_env%sum(rank_device)
+      CALL para_env%sum(rank_contact)
 
       ! compute number of packed matrix elements to send to / receive from each processor
       ALLOCATE (recv_nelems(para_env%num_pe))
@@ -650,7 +648,7 @@ CONTAINS
 
       DO iproc = 1, para_env%num_pe
          IF (iproc /= mepos_plus1 .AND. send_nelems(iproc) > 0) THEN
-            CALL mp_isend(send_packed_blocks(iproc)%vector, iproc - 1, para_env%group, send_handlers(iproc), 1)
+            CALL para_env%isend(send_packed_blocks(iproc)%vector, iproc - 1, send_handlers(iproc), 1)
          END IF
       END DO
 
@@ -658,7 +656,7 @@ CONTAINS
       DO iproc = 1, para_env%num_pe
          IF (iproc /= mepos_plus1) THEN
             IF (recv_nelems(iproc) > 0) THEN
-               CALL mp_irecv(recv_packed_blocks(iproc)%vector, iproc - 1, para_env%group, recv_handlers(iproc), 1)
+               CALL para_env%irecv(recv_packed_blocks(iproc)%vector, iproc - 1, recv_handlers(iproc), 1)
             END IF
          ELSE
             IF (ALLOCATED(send_packed_blocks(iproc)%vector)) &
@@ -669,7 +667,7 @@ CONTAINS
       ! unpack blocks
       DO iproc = 1, para_env%num_pe
          IF (iproc /= mepos_plus1 .AND. recv_nelems(iproc) > 0) &
-            CALL mp_wait(recv_handlers(iproc))
+            CALL recv_handlers(iproc)%wait()
       END DO
 
       recv_nelems(:) = 0
@@ -707,7 +705,7 @@ CONTAINS
 
       DO iproc = 1, para_env%num_pe
          IF (iproc /= mepos_plus1 .AND. send_nelems(iproc) > 0) &
-            CALL mp_wait(send_handlers(iproc))
+            CALL send_handlers(iproc)%wait()
       END DO
 
       ! release memory

@@ -45,7 +45,6 @@ MODULE qs_mo_io
                                               cp_print_key_generate_filename,&
                                               cp_print_key_should_output,&
                                               cp_print_key_unit_nr
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE dbcsr_api,                       ONLY: dbcsr_binary_write,&
                                               dbcsr_checksum,&
                                               dbcsr_create,&
@@ -59,8 +58,7 @@ MODULE qs_mo_io
    USE kinds,                           ONLY: default_path_length,&
                                               default_string_length,&
                                               dp
-   USE message_passing,                 ONLY: mp_bcast,&
-                                              mp_comm_type
+   USE message_passing,                 ONLY: mp_para_env_type
    USE orbital_pointers,                ONLY: indco,&
                                               nco,&
                                               nso
@@ -183,7 +181,7 @@ CONTAINS
 
       CALL timeset(routineN, handle)
       logger => cp_get_default_logger()
-      IF (logger%para_env%ionode) THEN
+      IF (logger%para_env%is_source()) THEN
          unit_nr = cp_logger_get_default_unit_nr(logger, local=.TRUE.)
       ELSE
          unit_nr = -1
@@ -391,7 +389,6 @@ CONTAINS
 
       ! use the scalapack block size as a default for buffering columns
       CALL cp_fm_get_info(mo_array(1)%mo_coeff, ncol_block=max_block)
-
       DO ispin = 1, nspin
          nmo = mo_array(ispin)%nmo
          IF ((ires > 0) .AND. (nmo > 0)) THEN
@@ -497,7 +494,7 @@ CONTAINS
       TYPE(atomic_kind_type), DIMENSION(:), POINTER      :: atomic_kind_set
       TYPE(qs_kind_type), DIMENSION(:), POINTER          :: qs_kind_set
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       INTEGER, INTENT(IN)                                :: id_nr, multiplicity
       TYPE(section_vals_type), POINTER                   :: dft_section
       LOGICAL, INTENT(OUT), OPTIONAL                     :: natom_mismatch
@@ -506,11 +503,9 @@ CONTAINS
       CHARACTER(LEN=*), PARAMETER :: routineN = 'read_mo_set_from_restart'
 
       CHARACTER(LEN=default_path_length)                 :: file_name
-      INTEGER                                            :: handle, ispin, natom, nspin, &
-                                                            restart_unit, source
+      INTEGER                                            :: handle, ispin, natom, nspin, restart_unit
       LOGICAL                                            :: exist, my_cdft
       TYPE(cp_logger_type), POINTER                      :: logger
-      TYPE(mp_comm_type)                                 :: group
 
       CALL timeset(routineN, handle)
       logger => cp_get_default_logger()
@@ -520,10 +515,7 @@ CONTAINS
       nspin = SIZE(mo_array)
       restart_unit = -1
 
-      group = para_env%group
-      source = para_env%source
-
-      IF (para_env%ionode) THEN
+      IF (para_env%is_source()) THEN
 
          natom = SIZE(particle_set, 1)
          CALL wfn_restart_file_name(file_name, exist, dft_section, logger)
@@ -546,16 +538,16 @@ CONTAINS
 
       IF (PRESENT(natom_mismatch)) THEN
          ! read_mos_restart_low only the io_node returns natom_mismatch, must broadcast it
-         CALL mp_bcast(natom_mismatch, source, group)
+         CALL para_env%bcast(natom_mismatch)
          IF (natom_mismatch) THEN
-            IF (para_env%ionode) CALL close_file(unit_number=restart_unit)
+            IF (para_env%is_source()) CALL close_file(unit_number=restart_unit)
             CALL timestop(handle)
             RETURN
          END IF
       END IF
 
       ! Close restart file
-      IF (para_env%ionode) CALL close_file(unit_number=restart_unit)
+      IF (para_env%is_source()) CALL close_file(unit_number=restart_unit)
 
       ! CDFT has no real dft_section and does not need to print
       IF (.NOT. my_cdft) THEN
@@ -589,18 +581,16 @@ CONTAINS
       TYPE(atomic_kind_type), DIMENSION(:), POINTER      :: atomic_kind_set
       TYPE(qs_kind_type), DIMENSION(:), POINTER          :: qs_kind_set
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       INTEGER, INTENT(IN)                                :: id_nr, multiplicity
       TYPE(section_vals_type), POINTER                   :: dft_section
 
       CHARACTER(LEN=*), PARAMETER :: routineN = 'read_rt_mos_from_restart'
 
       CHARACTER(LEN=default_path_length)                 :: file_name
-      INTEGER                                            :: handle, ispin, natom, nspin, &
-                                                            restart_unit, source
+      INTEGER                                            :: handle, ispin, natom, nspin, restart_unit
       LOGICAL                                            :: exist
       TYPE(cp_logger_type), POINTER                      :: logger
-      TYPE(mp_comm_type)                                 :: group
 
       CALL timeset(routineN, handle)
       logger => cp_get_default_logger()
@@ -608,10 +598,7 @@ CONTAINS
       nspin = SIZE(mo_array)
       restart_unit = -1
 
-      group = para_env%group
-      source = para_env%source
-
-      IF (para_env%ionode) THEN
+      IF (para_env%is_source()) THEN
 
          natom = SIZE(particle_set, 1)
          CALL wfn_restart_file_name(file_name, exist, dft_section, logger, rtp=.TRUE.)
@@ -633,7 +620,7 @@ CONTAINS
                                 rst_unit=restart_unit, multiplicity=multiplicity)
 
       ! Close restart file
-      IF (para_env%ionode) CALL close_file(unit_number=restart_unit)
+      IF (para_env%is_source()) CALL close_file(unit_number=restart_unit)
 
       DO ispin = 1, nspin
          CALL write_mo_set_to_output_unit(mo_array(ispin), atomic_kind_set, qs_kind_set, &
@@ -663,7 +650,7 @@ CONTAINS
                                    multiplicity, rt_mos, natom_mismatch)
 
       TYPE(mo_set_type), DIMENSION(:), INTENT(INOUT)     :: mos
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(qs_kind_type), DIMENSION(:), POINTER          :: qs_kind_set
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
       INTEGER, INTENT(IN)                                :: natom, rst_unit
@@ -674,7 +661,7 @@ CONTAINS
       INTEGER :: homo, homo_read, i, iatom, ikind, imat, irow, iset, iset_read, ishell, &
          ishell_read, iso, ispin, lfomo_read, lmax, lshell, my_mult, nao, nao_read, natom_read, &
          nelectron, nelectron_read, nmo, nmo_read, nnshell, nset, nset_max, nshell_max, nspin, &
-         nspin_read, offset_read, source
+         nspin_read, offset_read
       INTEGER, DIMENSION(:), POINTER                     :: nset_info, nshell
       INTEGER, DIMENSION(:, :), POINTER                  :: l, nshell_info
       INTEGER, DIMENSION(:, :, :), POINTER               :: nso_info, offset_info
@@ -683,7 +670,6 @@ CONTAINS
       REAL(KIND=dp), DIMENSION(:, :), POINTER            :: vecbuffer, vecbuffer_read
       TYPE(cp_logger_type), POINTER                      :: logger
       TYPE(gto_basis_set_type), POINTER                  :: orb_basis_set
-      TYPE(mp_comm_type)                                 :: group
       TYPE(qs_dftb_atom_type), POINTER                   :: dftb_parameter
 
       logger => cp_get_default_logger()
@@ -692,10 +678,8 @@ CONTAINS
       nao = mos(1)%nao
       my_mult = 0
       IF (PRESENT(multiplicity)) my_mult = multiplicity
-      group = para_env%group
-      source = para_env%source
 
-      IF (para_env%ionode) THEN
+      IF (para_env%is_source()) THEN
          READ (rst_unit) natom_read, nspin_read, nao_read, nset_max, nshell_max
          IF (PRESENT(rt_mos)) THEN
             IF (nspin_read /= nspin) THEN
@@ -750,7 +734,7 @@ CONTAINS
       END IF ! ionode
 
       ! make natom_match and natom_mismatch uniform across all nodes
-      CALL mp_bcast(natom_match, source, group)
+      CALL para_env%bcast(natom_match)
       IF (PRESENT(natom_mismatch)) natom_mismatch = .NOT. natom_match
       ! handle natom_match false
       IF (.NOT. natom_match) THEN
@@ -763,7 +747,7 @@ CONTAINS
          END IF
       END IF
 
-      CALL mp_bcast(nspin_read, source, group)
+      CALL para_env%bcast(nspin_read)
 
       ALLOCATE (vecbuffer(1, nao))
 
@@ -775,7 +759,7 @@ CONTAINS
          mos(ispin)%occupation_numbers(:) = 0.0_dp
          CALL cp_fm_set_all(mos(ispin)%mo_coeff, 0.0_dp)
 
-         IF (para_env%ionode .AND. (nmo > 0)) THEN
+         IF (para_env%is_source() .AND. (nmo > 0)) THEN
             READ (rst_unit) nmo_read, homo_read, lfomo_read, nelectron_read
             ALLOCATE (eig_read(nmo_read), occ_read(nmo_read))
             eig_read = 0.0_dp
@@ -812,28 +796,29 @@ CONTAINS
             END IF
          END IF
 
-         CALL mp_bcast(nmo, source, group)
-         CALL mp_bcast(mos(ispin)%homo, source, group)
-         CALL mp_bcast(mos(ispin)%lfomo, source, group)
-         CALL mp_bcast(mos(ispin)%nelectron, source, group)
-         CALL mp_bcast(mos(ispin)%eigenvalues, source, group)
-         CALL mp_bcast(mos(ispin)%occupation_numbers, source, group)
+         CALL para_env%bcast(nmo)
+         CALL para_env%bcast(mos(ispin)%homo)
+         CALL para_env%bcast(mos(ispin)%lfomo)
+         CALL para_env%bcast(mos(ispin)%nelectron)
+         CALL para_env%bcast(mos(ispin)%eigenvalues)
+         CALL para_env%bcast(mos(ispin)%occupation_numbers)
+
          IF (PRESENT(rt_mos)) THEN
             DO imat = 2*ispin - 1, 2*ispin
                DO i = 1, nmo
-                  IF (para_env%ionode) THEN
+                  IF (para_env%is_source()) THEN
                      READ (rst_unit) vecbuffer
                   ELSE
                      vecbuffer(1, :) = 0.0_dp
                   END IF
-                  CALL mp_bcast(vecbuffer, source, group)
+                  CALL para_env%bcast(vecbuffer)
                   CALL cp_fm_set_submatrix(rt_mos(imat), &
                                            vecbuffer, 1, i, nao, 1, transpose=.TRUE.)
                END DO
             END DO
          ELSE
             DO i = 1, nmo
-               IF (para_env%ionode) THEN
+               IF (para_env%is_source()) THEN
                   READ (rst_unit) vecbuffer_read
                   ! now, try to assign the read to the real vector
                   ! in case the basis set changed this involves some guessing
@@ -910,13 +895,13 @@ CONTAINS
 
                END IF
 
-               CALL mp_bcast(vecbuffer, source, group)
+               CALL para_env%bcast(vecbuffer)
                CALL cp_fm_set_submatrix(mos(ispin)%mo_coeff, &
                                         vecbuffer, 1, i, nao, 1, transpose=.TRUE.)
             END DO
          END IF
          ! Skip extra MOs if there any
-         IF (para_env%ionode) THEN
+         IF (para_env%is_source()) THEN
             !ignore nmo = 0
             IF (nmo > 0) THEN
                DO i = nmo + 1, nmo_read
@@ -949,7 +934,7 @@ CONTAINS
 
       DEALLOCATE (vecbuffer)
 
-      IF (para_env%ionode) THEN
+      IF (para_env%is_source()) THEN
          DEALLOCATE (vecbuffer_read)
          DEALLOCATE (offset_info)
          DEALLOCATE (nso_info)
@@ -1036,7 +1021,7 @@ CONTAINS
       NULLIFY (nshell)
 
       logger => cp_get_default_logger()
-      ionode = logger%para_env%ionode
+      ionode = logger%para_env%is_source()
       CALL section_vals_val_get(dft_section, "PRINT%MO%EIGENVALUES", l_val=print_eigvals)
       CALL section_vals_val_get(dft_section, "PRINT%MO%EIGENVECTORS", l_val=print_eigvecs)
       CALL section_vals_val_get(dft_section, "PRINT%MO%OCCUPATION_NUMBERS", l_val=print_occup)

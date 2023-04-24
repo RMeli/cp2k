@@ -40,7 +40,6 @@ MODULE qs_tddfpt2_fhxc_forces
    USE cp_log_handling,                 ONLY: cp_get_default_logger,&
                                               cp_logger_get_default_unit_nr,&
                                               cp_logger_type
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE dbcsr_api,                       ONLY: &
         dbcsr_add, dbcsr_complete_redistribute, dbcsr_copy, dbcsr_create, dbcsr_filter, &
         dbcsr_get_block_p, dbcsr_iterator_blocks_left, dbcsr_iterator_next_block, &
@@ -75,7 +74,7 @@ MODULE qs_tddfpt2_fhxc_forces
                                               section_vals_val_get
    USE kinds,                           ONLY: dp
    USE mathconstants,                   ONLY: oorootpi
-   USE message_passing,                 ONLY: mp_sum
+   USE message_passing,                 ONLY: mp_para_env_type
    USE parallel_gemm_api,               ONLY: parallel_gemm
    USE particle_methods,                ONLY: get_particle_set
    USE particle_types,                  ONLY: particle_type
@@ -185,7 +184,6 @@ CONTAINS
       TYPE(cp_fm_type), DIMENSION(:), POINTER            :: cpmos, evect
       TYPE(cp_fm_type), POINTER                          :: mos
       TYPE(cp_logger_type), POINTER                      :: logger
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER :: matrix_fx, matrix_gx, matrix_hfx, &
          matrix_hfx_admm, matrix_hfx_admm_asymm, matrix_hfx_asymm, matrix_hx, matrix_p, &
          matrix_p_admm, matrix_px1, matrix_px1_admm, matrix_px1_admm_asymm, matrix_px1_asymm, &
@@ -197,6 +195,7 @@ CONTAINS
       TYPE(hfx_type), DIMENSION(:, :), POINTER           :: x_data
       TYPE(local_rho_type), POINTER                      :: local_rho_set, local_rho_set_admm, &
                                                             local_rho_set_f, local_rho_set_g
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(neighbor_list_set_p_type), DIMENSION(:), &
          POINTER                                         :: sab, sab_aux_fit, sab_orb, sap_oce
       TYPE(oce_matrix_type), POINTER                     :: oce
@@ -221,7 +220,7 @@ CONTAINS
       CALL timeset(routineN, handle)
 
       logger => cp_get_default_logger()
-      IF (logger%para_env%ionode) THEN
+      IF (logger%para_env%is_source()) THEN
          iounit = cp_logger_get_default_unit_nr(logger, local=.TRUE.)
       ELSE
          iounit = -1
@@ -421,7 +420,7 @@ CONTAINS
          END DO
          IF (debug_forces) THEN
             fodeb(1:3) = force(1)%rho_elec(1:3, 1) - fodeb(1:3)
-            CALL mp_sum(fodeb, para_env%group)
+            CALL para_env%sum(fodeb)
             IF (iounit > 0) WRITE (iounit, "(T3,A,T33,3F16.8)") "DEBUG:: Px*dKh[X]   ", fodeb
          END IF
          IF (gapw) THEN
@@ -431,7 +430,7 @@ CONTAINS
                                        local_rho_set=local_rho_set)
             IF (debug_forces) THEN
                fodeb(1:3) = force(1)%g0s_Vh_elec(1:3, 1) - fodeb(1:3)
-               CALL mp_sum(fodeb, para_env%group)
+               CALL para_env%sum(fodeb)
                IF (iounit > 0) WRITE (iounit, "(T3,A,T33,3F16.8)") "DEBUG:: Px*dKh[X]PAWg0", fodeb
             END IF
             IF (debug_forces) fodeb(1:3) = force(1)%Vhxc_atom(1:3, 1)
@@ -439,13 +438,16 @@ CONTAINS
                                 rho_atom_external=local_rho_set%rho_atom_set, kscale=0.5_dp)
             IF (debug_forces) THEN
                fodeb(1:3) = force(1)%Vhxc_atom(1:3, 1) - fodeb(1:3)
-               CALL mp_sum(fodeb, para_env%group)
+               CALL para_env%sum(fodeb)
                IF (iounit > 0) WRITE (iounit, "(T3,A,T33,3F16.8)") "DEBUG:: Px*dKh[X]PAW ", fodeb
             END IF
          END IF
       END IF
 
       ! XC
+      IF (full_kernel%do_exck) THEN
+         CPABORT("NYA")
+      END IF
       NULLIFY (fxc_rho, fxc_tau, gxc_rho, gxc_tau)
       xc_section => full_kernel%xc_section
       CALL section_vals_val_get(xc_section, "XC_FUNCTIONAL%_SECTION_PARAMETERS_", &
@@ -521,7 +523,7 @@ CONTAINS
          END DO
          IF (debug_forces) THEN
             fodeb(1:3) = force(1)%rho_elec(1:3, 1) - fodeb(1:3)
-            CALL mp_sum(fodeb, para_env%group)
+            CALL para_env%sum(fodeb)
             IF (iounit > 0) WRITE (iounit, "(T3,A,T33,3F16.8)") "DEBUG:: Px*dKf[X]   ", fodeb
          END IF
 
@@ -542,7 +544,7 @@ CONTAINS
          END DO
          IF (debug_forces) THEN
             fodeb(1:3) = force(1)%rho_elec(1:3, 1) - fodeb(1:3)
-            CALL mp_sum(fodeb, para_env%group)
+            CALL para_env%sum(fodeb)
             IF (iounit > 0) WRITE (iounit, "(T3,A,T33,3F16.8)") "DEBUG:: P*dKg[X]   ", fodeb
          END IF
          CALL qs_fgxc_release(ks_env, fxc_rho, fxc_tau, gxc_rho, gxc_tau)
@@ -553,7 +555,7 @@ CONTAINS
                                 rho_atom_external=local_rho_set_f%rho_atom_set, kscale=0.5_dp)
             IF (debug_forces) THEN
                fodeb(1:3) = force(1)%Vhxc_atom(1:3, 1) - fodeb(1:3)
-               CALL mp_sum(fodeb, para_env%group)
+               CALL para_env%sum(fodeb)
                IF (iounit > 0) WRITE (iounit, "(T3,A,T33,3F16.8)") "DEBUG:: Px*dKf[X]PAW ", fodeb
             END IF
             IF (debug_forces) fodeb(1:3) = force(1)%Vhxc_atom(1:3, 1)
@@ -562,7 +564,7 @@ CONTAINS
                                 kscale=0.5_dp)
             IF (debug_forces) THEN
                fodeb(1:3) = force(1)%Vhxc_atom(1:3, 1) - fodeb(1:3)
-               CALL mp_sum(fodeb, para_env%group)
+               CALL para_env%sum(fodeb)
                IF (iounit > 0) WRITE (iounit, "(T3,A,T33,3F16.8)") "DEBUG:: Px*dKg[X]PAW ", fodeb
             END IF
          END IF
@@ -654,7 +656,7 @@ CONTAINS
                END DO
                IF (debug_forces) THEN
                   fodeb(1:3) = force(1)%rho_elec(1:3, 1) - fodeb(1:3)
-                  CALL mp_sum(fodeb, para_env%group)
+                  CALL para_env%sum(fodeb)
                   IF (iounit > 0) WRITE (iounit, "(T3,A,T33,3F16.8)") "DEBUG:: Px*dKf[X]ADMM", fodeb
                END IF
 
@@ -672,7 +674,7 @@ CONTAINS
                END DO
                IF (debug_forces) THEN
                   fodeb(1:3) = force(1)%rho_elec(1:3, 1) - fodeb(1:3)
-                  CALL mp_sum(fodeb, para_env%group)
+                  CALL para_env%sum(fodeb)
                   IF (iounit > 0) WRITE (iounit, "(T3,A,T33,3F16.8)") "DEBUG:: P*dKg[X]ADMM", fodeb
                END IF
                CALL qs_fgxc_release(ks_env, fxc_rho, fxc_tau, gxc_rho, gxc_tau)
@@ -684,7 +686,7 @@ CONTAINS
                CALL admm_projection_derivative(qs_env, mfx, matrix_px1, fval)
                IF (debug_forces) THEN
                   fodeb(1:3) = force(1)%overlap_admm(1:3, 1) - fodeb(1:3)
-                  CALL mp_sum(fodeb, para_env%group)
+                  CALL para_env%sum(fodeb)
                   IF (iounit > 0) WRITE (iounit, "(T3,A,T33,3F16.8)") "DEBUG:: P*dfXC(P)*S' ", fodeb
                END IF
                IF (debug_forces) fodeb(1:3) = force(1)%overlap_admm(1:3, 1)
@@ -692,7 +694,7 @@ CONTAINS
                CALL admm_projection_derivative(qs_env, mgx, matrix_p, fval)
                IF (debug_forces) THEN
                   fodeb(1:3) = force(1)%overlap_admm(1:3, 1) - fodeb(1:3)
-                  CALL mp_sum(fodeb, para_env%group)
+                  CALL para_env%sum(fodeb)
                   IF (iounit > 0) WRITE (iounit, "(T3,A,T33,3F16.8)") "DEBUG:: P*dgXC(P)*S' ", fodeb
                END IF
                !
@@ -870,7 +872,7 @@ CONTAINS
             CALL admm_projection_derivative(qs_env, matrix_hfx_admm_asymm, matrix_px1_asymm, fval)
             IF (debug_forces) THEN
                fodeb(1:3) = force(1)%overlap_admm(1:3, 1) - fodeb(1:3)
-               CALL mp_sum(fodeb, para_env%group)
+               CALL para_env%sum(fodeb)
                IF (iounit > 0) WRITE (iounit, "(T3,A,T33,3F16.8)") "DEBUG:: P*Hx(P)*S' ", fodeb
             END IF
             !
@@ -904,7 +906,7 @@ CONTAINS
             END IF
             IF (debug_forces) THEN
                fodeb(1:3) = force(1)%fock_4c(1:3, 1) - fodeb(1:3)
-               CALL mp_sum(fodeb, para_env%group)
+               CALL para_env%sum(fodeb)
                IF (iounit > 0) WRITE (iounit, "(T3,A,T33,3F16.8)") "DEBUG:: Px*hfx'*Px ", fodeb
             END IF
             !
@@ -982,7 +984,7 @@ CONTAINS
             END IF
             IF (debug_forces) THEN
                fodeb(1:3) = force(1)%fock_4c(1:3, 1) - fodeb(1:3)
-               CALL mp_sum(fodeb, para_env%group)
+               CALL para_env%sum(fodeb)
                IF (iounit > 0) WRITE (iounit, "(T3,A,T33,3F16.8)") "DEBUG:: Px*hfx'*Px ", fodeb
             END IF
             !
@@ -1150,7 +1152,6 @@ CONTAINS
       TYPE(cp_fm_type), DIMENSION(:), POINTER            :: cpmos, X
       TYPE(cp_fm_type), POINTER                          :: ct, ctjspin, ucmatrix, uxmatrix
       TYPE(cp_logger_type), POINTER                      :: logger
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_iterator_type)                          :: iter
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: gamma_matrix, matrix_plo, matrix_s, &
                                                             matrix_wx1, scrm
@@ -1159,6 +1160,7 @@ CONTAINS
       TYPE(dft_control_type), POINTER                    :: dft_control
       TYPE(ewald_environment_type), POINTER              :: ewald_env
       TYPE(ewald_pw_type), POINTER                       :: ewald_pw
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(neighbor_list_set_p_type), DIMENSION(:), &
          POINTER                                         :: n_list, sab_orb
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
@@ -1175,7 +1177,7 @@ CONTAINS
       CPASSERT(ASSOCIATED(gs_mos))
 
       logger => cp_get_default_logger()
-      IF (logger%para_env%ionode) THEN
+      IF (logger%para_env%is_source()) THEN
          iounit = cp_logger_get_default_unit_nr(logger, local=.TRUE.)
       ELSE
          iounit = -1
@@ -1213,7 +1215,8 @@ CONTAINS
       ALLOCATE (last_sgf(natom))
       CALL get_particle_set(particle_set, qs_kind_set, first_sgf=first_sgf, last_sgf=last_sgf)
 
-      CALL get_qs_env(qs_env, ks_env=ks_env, matrix_s=matrix_s, sab_orb=sab_orb)
+      CALL get_qs_env(qs_env, ks_env=ks_env, matrix_s=matrix_s, sab_orb=sab_orb, atomic_kind_set=atomic_kind_set)
+      CALL get_atomic_kind_set(atomic_kind_set=atomic_kind_set, kind_of=kind_of, atom_of_kind=atom_of_kind)
 
       ! calculate Loewdin transformed Davidson trial vector tilde(X)=S^1/2*X
       ! and tilde(tilde(X))=S^1/2_A*tilde(X)_A
@@ -1251,11 +1254,6 @@ CONTAINS
          IF (do_coulomb) THEN
             !
             IF (debug_forces) fodeb(1:3) = force(1)%rho_elec(1:3, 1)
-            !
-            ALLOCATE (kind_of(natom), atom_of_kind(natom))
-            CALL get_qs_env(qs_env=qs_env, atomic_kind_set=atomic_kind_set)
-            CALL get_atomic_kind_set(atomic_kind_set=atomic_kind_set, kind_of=kind_of, &
-                                     atom_of_kind=atom_of_kind)
             !
             tcharge(:) = 0.0_dp
             DO jspin = 1, nspins
@@ -1317,7 +1315,7 @@ CONTAINS
                CALL tb_spme_evaluate(ewald_env, ewald_pw, particle_set, cell, &
                                      gtcharge, tcharge, calculate_forces, virial, use_virial, atprop)
                ! add self charge interaction contribution
-               IF (para_env%ionode) THEN
+               IF (para_env%is_source()) THEN
                   gtcharge(:, 1) = gtcharge(:, 1) - 2._dp*alpha*oorootpi*tcharge(:)
                END IF
             ELSE
@@ -1338,7 +1336,7 @@ CONTAINS
                   END DO
                END DO
             END IF
-            CALL mp_sum(gtcharge(:, 1), para_env%group)
+            CALL para_env%sum(gtcharge(:, 1))
             ! expand charges
             ! TV(mu) = TC(a of mu)
             tv(1:nsgf) = 0.0_dp
@@ -1361,7 +1359,7 @@ CONTAINS
             !
             IF (debug_forces) THEN
                fodeb(1:3) = force(1)%rho_elec(1:3, 1) - fodeb(1:3)
-               CALL mp_sum(fodeb, para_env%group)
+               CALL para_env%sum(fodeb)
                IF (iounit > 0) WRITE (iounit, "(T3,A,T33,3F16.8)") "DEBUG:: Coul[X]   ", fodeb
             END IF
             norb = nactive(ispin)
@@ -1427,7 +1425,6 @@ CONTAINS
                                        matrix_g=vcvec, ncol=norb, alpha=2.0_dp*alpha, symmetry_mode=1)
             CALL cp_fm_release(vcvec)
             CALL cp_fm_release(cvcmat)
-            DEALLOCATE (atom_of_kind, kind_of)
          END IF
          !
          ! *** Exchange contribution
@@ -1437,11 +1434,6 @@ CONTAINS
             IF (debug_forces) fodeb(1:3) = force(1)%rho_elec(1:3, 1)
             !
             norb = nactive(ispin)
-            !
-            ALLOCATE (kind_of(natom), atom_of_kind(natom))
-            CALL get_qs_env(qs_env=qs_env, atomic_kind_set=atomic_kind_set)
-            CALL get_atomic_kind_set(atomic_kind_set=atomic_kind_set, kind_of=kind_of, &
-                                     atom_of_kind=atom_of_kind)
             !
             tempmat => work%shalf
             CALL dbcsr_create(pdens, template=tempmat, matrix_type=dbcsr_type_no_symmetry)
@@ -1573,11 +1565,10 @@ CONTAINS
             !
             CALL dbcsr_release(pdens)
             CALL dbcsr_release(ptrans)
-            DEALLOCATE (kind_of, atom_of_kind)
             !
             IF (debug_forces) THEN
                fodeb(1:3) = force(1)%rho_elec(1:3, 1) - fodeb(1:3)
-               CALL mp_sum(fodeb, para_env%group)
+               CALL para_env%sum(fodeb)
                IF (iounit > 0) WRITE (iounit, "(T3,A,T33,3F16.8)") "DEBUG:: Exch[X]   ", fodeb
             END IF
          END IF
@@ -1587,10 +1578,7 @@ CONTAINS
          DEALLOCATE (tv)
       END DO
 
-      DO ispin = 1, nspins
-         CALL cp_fm_release(matrix=xtransformed(ispin))
-      END DO
-      DEALLOCATE (xtransformed)
+      CALL cp_fm_release(xtransformed)
       DEALLOCATE (tcharge, gtcharge)
       DEALLOCATE (first_sgf, last_sgf)
 
@@ -1611,7 +1599,7 @@ CONTAINS
       CALL dbcsr_deallocate_matrix_set(matrix_plo)
       IF (debug_forces) THEN
          fodeb(1:3) = force(1)%overlap(1:3, 1) - fodeb(1:3)
-         CALL mp_sum(fodeb, para_env%group)
+         CALL para_env%sum(fodeb)
          IF (iounit > 0) WRITE (iounit, "(T3,A,T33,3F16.8)") "DEBUG:: Lowdin ", fodeb
       END IF
 

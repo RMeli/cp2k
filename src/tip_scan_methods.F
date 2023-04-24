@@ -13,13 +13,12 @@ MODULE tip_scan_methods
                                               cp_logger_get_default_io_unit,&
                                               cp_logger_type
    USE cp_output_handling,              ONLY: silent_print_level
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE cp_realspace_grid_cube,          ONLY: cp_cube_to_pw
    USE input_section_types,             ONLY: section_vals_type,&
                                               section_vals_val_get
    USE kinds,                           ONLY: default_string_length,&
                                               dp
-   USE message_passing,                 ONLY: mp_bcast
+   USE message_passing,                 ONLY: mp_para_env_type
    USE pw_env_types,                    ONLY: pw_env_get,&
                                               pw_env_type
    USE pw_grid_types,                   ONLY: pw_grid_type
@@ -268,14 +267,14 @@ CONTAINS
       REAL(KIND=dp)                                      :: scaling
       REAL(KIND=dp), DIMENSION(3)                        :: rdum
       REAL(KIND=dp), DIMENSION(3, 3)                     :: dcell
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(pw_grid_type), POINTER                        :: pw_grid
 
       CALL timeset(routineN, handle)
 
       CALL get_qs_env(qs_env, para_env=para_env)
 
-      IF (para_env%ionode) THEN
+      IF (para_env%is_source()) THEN
          CALL open_file(file_name=scan_env%tip_cube_file, &
                         file_status="OLD", &
                         file_form="FORMATTED", &
@@ -293,11 +292,11 @@ CONTAINS
          CALL close_file(unit_number=extunit)
       END IF
 
-      CALL mp_bcast(npts, para_env%source, para_env%group)
-      CALL mp_bcast(dcell, para_env%source, para_env%group)
+      CALL para_env%bcast(npts)
+      CALL para_env%bcast(dcell)
 
       NULLIFY (pw_grid)
-      CALL pw_grid_create(pw_grid, para_env%group)
+      CALL pw_grid_create(pw_grid, para_env)
       CALL pw_grid_setup(dcell, pw_grid, npts=npts)
       CALL pw_create(scan_env%tip_pw_r, pw_grid, use_data=REALDATA3D, in_space=REALSPACE)
 !deb

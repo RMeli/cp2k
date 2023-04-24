@@ -28,7 +28,6 @@ MODULE rpa_communication
                                               cp_fm_release,&
                                               cp_fm_set_all,&
                                               cp_fm_type
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE dbcsr_api,                       ONLY: dbcsr_p_type,&
                                               dbcsr_type,&
                                               dbcsr_type_no_symmetry
@@ -37,13 +36,9 @@ MODULE rpa_communication
                                               group_dist_d1_type,&
                                               release_group_dist
    USE kinds,                           ONLY: dp
-   USE message_passing,                 ONLY: mp_allgather,&
-                                              mp_irecv,&
-                                              mp_isend,&
+   USE message_passing,                 ONLY: mp_para_env_type,&
                                               mp_request_null,&
                                               mp_request_type,&
-                                              mp_sum,&
-                                              mp_wait,&
                                               mp_waitall
    USE mp2_ri_grad_util,                ONLY: fm2array,&
                                               prepare_redistribution
@@ -86,8 +81,8 @@ CONTAINS
                                 my_group_L_size)
       TYPE(cp_fm_type), INTENT(INOUT)                    :: fm_mat_Gamma_3
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: dbcsr_Gamma_3
-      TYPE(cp_para_env_type), INTENT(IN)                 :: para_env_RPA
-      TYPE(cp_para_env_type), INTENT(IN), POINTER        :: para_env_sub
+      TYPE(mp_para_env_type), INTENT(IN)                 :: para_env_RPA
+      TYPE(mp_para_env_type), INTENT(IN), POINTER        :: para_env_sub
       INTEGER, INTENT(IN)                                :: homo, virtual
       TYPE(dbcsr_type), POINTER                          :: mo_coeff_o
       INTEGER, INTENT(IN)                                :: ngroup, my_group_L_start, &
@@ -172,8 +167,8 @@ CONTAINS
       ! fill the info array
       grid_2_mepos(myprow, mypcol) = para_env_sub%mepos
       ! sum infos
-      CALL mp_sum(grid_2_mepos, para_env_sub%group)
-      CALL mp_allgather([myprow, mypcol], mepos_2_grid, para_env_sub%group)
+      CALL para_env_sub%sum(grid_2_mepos)
+      CALL para_env_sub%allgather([myprow, mypcol], mepos_2_grid)
 
       ! loop over local index range and define the sending map
       ALLOCATE (map_send_size(0:para_env_sub%num_pe - 1))
@@ -339,8 +334,8 @@ CONTAINS
             IF (map_rec_size(proc_receive) > 0) THEN
                rec_counter = rec_counter + 1
                buffer_rec(rec_counter)%msg = 0.0_dp
-               CALL mp_irecv(buffer_rec(rec_counter)%msg, proc_receive, para_env_sub%group, &
-                             buffer_rec(rec_counter)%msg_req)
+               CALL para_env_sub%irecv(buffer_rec(rec_counter)%msg, proc_receive, &
+                                       buffer_rec(rec_counter)%msg_req)
             END IF
          END DO
          ! fill the sending buffer and send the messages
@@ -380,8 +375,8 @@ CONTAINS
             proc_send = MODULO(para_env_sub%mepos + proc_shift, para_env_sub%num_pe)
             IF (map_send_size(proc_send) > 0) THEN
                send_counter = send_counter + 1
-               CALL mp_isend(buffer_send(send_counter)%msg, proc_send, para_env_sub%group, &
-                             buffer_send(send_counter)%msg_req)
+               CALL para_env_sub%isend(buffer_send(send_counter)%msg, proc_send, &
+                                       buffer_send(send_counter)%msg_req)
                req_send(send_counter) = buffer_send(send_counter)%msg_req
             END IF
          END DO
@@ -394,7 +389,7 @@ CONTAINS
             IF (map_rec_size(proc_receive) > 0) THEN
                rec_counter = rec_counter + 1
                ! wait for the message
-               CALL mp_wait(buffer_rec(rec_counter)%msg_req)
+               CALL buffer_rec(rec_counter)%msg_req%wait()
                DO iii = 1, size_rec_buffer
                   i_local = indices_rec(rec_counter)%map(1, iii)
                   j_local = indices_rec(rec_counter)%map(2, iii)
@@ -460,7 +455,7 @@ CONTAINS
    SUBROUTINE communicate_buffer(para_env, num_entries_rec, num_entries_send, buffer_rec, buffer_send, &
                                  req_array, do_indx, do_msg)
 
-      TYPE(cp_para_env_type), INTENT(IN)                 :: para_env
+      TYPE(mp_para_env_type), INTENT(IN)                 :: para_env
       INTEGER, ALLOCATABLE, DIMENSION(:), INTENT(IN)     :: num_entries_rec, num_entries_send
       TYPE(integ_mat_buffer_type), ALLOCATABLE, &
          DIMENSION(:), INTENT(INOUT)                     :: buffer_rec, buffer_send
@@ -488,10 +483,10 @@ CONTAINS
             IF (num_entries_rec(imepos) > 0) THEN
                rec_counter = rec_counter + 1
                IF (my_do_indx) THEN
-                  CALL mp_irecv(buffer_rec(imepos)%indx, imepos, para_env%group, req_array(rec_counter, 3), tag=4)
+                  CALL para_env%irecv(buffer_rec(imepos)%indx, imepos, req_array(rec_counter, 3), tag=4)
                END IF
                IF (my_do_msg) THEN
-                  CALL mp_irecv(buffer_rec(imepos)%msg, imepos, para_env%group, req_array(rec_counter, 4), tag=7)
+                  CALL para_env%irecv(buffer_rec(imepos)%msg, imepos, req_array(rec_counter, 4), tag=7)
                END IF
             END IF
          END DO
@@ -500,10 +495,10 @@ CONTAINS
             IF (num_entries_send(imepos) > 0) THEN
                send_counter = send_counter + 1
                IF (my_do_indx) THEN
-                  CALL mp_isend(buffer_send(imepos)%indx, imepos, para_env%group, req_array(send_counter, 1), tag=4)
+                  CALL para_env%isend(buffer_send(imepos)%indx, imepos, req_array(send_counter, 1), tag=4)
                END IF
                IF (my_do_msg) THEN
-                  CALL mp_isend(buffer_send(imepos)%msg, imepos, para_env%group, req_array(send_counter, 2), tag=7)
+                  CALL para_env%isend(buffer_send(imepos)%msg, imepos, req_array(send_counter, 2), tag=7)
                END IF
             END IF
          END DO

@@ -26,7 +26,6 @@ MODULE input_cp2k_restarts
                                               cp_print_key_finished_output,&
                                               cp_print_key_should_output,&
                                               cp_print_key_unit_nr
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE cp_subsys_types,                 ONLY: cp_subsys_get,&
                                               cp_subsys_type
    USE csvr_system_types,               ONLY: csvr_system_type
@@ -59,9 +58,7 @@ MODULE input_cp2k_restarts
    USE md_environment_types,            ONLY: get_md_env,&
                                               md_environment_type
    USE memory_utilities,                ONLY: reallocate
-   USE message_passing,                 ONLY: mp_allgather,&
-                                              mp_bcast,&
-                                              mp_sum
+   USE message_passing,                 ONLY: mp_para_env_type
    USE metadynamics_types,              ONLY: meta_env_type
    USE molecule_kind_list_types,        ONLY: molecule_kind_list_type
    USE molecule_list_types,             ONLY: molecule_list_type
@@ -520,10 +517,10 @@ CONTAINS
       REAL(KIND=dp), DIMENSION(:), POINTER               :: buffer, eta, fnhc, mnhc, veta, wrk
       REAL(KIND=dp), POINTER                             :: constant, t
       TYPE(average_quantities_type), POINTER             :: averages
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(cp_subsys_type), POINTER                      :: subsys
       TYPE(lnhc_parameters_type), POINTER                :: nhc
       TYPE(meta_env_type), POINTER                       :: meta_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(npt_info_type), POINTER                       :: npt(:, :)
       TYPE(particle_list_type), POINTER                  :: particles
       TYPE(section_vals_type), POINTER                   :: replica_section, work_section
@@ -1119,7 +1116,7 @@ CONTAINS
          END DO
 
          ! pass the message from all processors to logger%para_env%source
-         CALL mp_sum(real_msg, helium_env(1)%comm)
+         CALL helium_env(1)%comm%sum(real_msg)
          real_msg_gather(:) = real_msg(:)
 
          ! update coordinates in the global input structure, only in
@@ -1150,7 +1147,7 @@ CONTAINS
             int_msg_gather((offset + i - 1)*msglen + 1:(offset + i)*msglen) = helium_env(i)%helium%permutation
          END DO
 
-         CALL mp_sum(int_msg_gather, helium_env(1)%comm)
+         CALL helium_env(1)%comm%sum(int_msg_gather)
 
          ! update permutation state in the global input structure
          CALL section_vals_val_set(helium_env(1)%helium%input, &
@@ -1188,7 +1185,7 @@ CONTAINS
          DO i = 1, SIZE(helium_env)
             real_msg_gather((i - 1 + offset)*msglen + 1:(i + offset)*msglen) = helium_env(i)%helium%proarea%ravr(:)
          END DO
-         CALL mp_sum(real_msg_gather, helium_env(1)%comm)
+         CALL helium_env(1)%comm%sum(real_msg_gather)
 
          ! update it in the global input structure
          CALL section_vals_val_set(helium_env(1)%helium%input, &
@@ -1205,7 +1202,7 @@ CONTAINS
          DO i = 1, SIZE(helium_env)
             real_msg_gather((i - 1 + offset)*msglen + 1:(i + offset)*msglen) = helium_env(i)%helium%prarea2%ravr(:)
          END DO
-         CALL mp_sum(real_msg_gather, helium_env(1)%comm)
+         CALL helium_env(1)%comm%sum(real_msg_gather)
 
          ! update it in the global input structure
          CALL section_vals_val_set(helium_env(1)%helium%input, &
@@ -1222,7 +1219,7 @@ CONTAINS
          DO i = 1, SIZE(helium_env)
             real_msg_gather((i - 1 + offset)*msglen + 1:(i + offset)*msglen) = helium_env(i)%helium%wnmber2%ravr(:)
          END DO
-         CALL mp_sum(real_msg_gather, helium_env(1)%comm)
+         CALL helium_env(1)%comm%sum(real_msg_gather)
 
          ! update it in the global input structure
          CALL section_vals_val_set(helium_env(1)%helium%input, &
@@ -1239,7 +1236,7 @@ CONTAINS
          DO i = 1, SIZE(helium_env)
             real_msg_gather((i - 1 + offset)*msglen + 1:(i + offset)*msglen) = helium_env(i)%helium%mominer%ravr(:)
          END DO
-         CALL mp_sum(real_msg_gather, helium_env(1)%comm)
+         CALL helium_env(1)%comm%sum(real_msg_gather)
 
          ! update it in the global input structure
          CALL section_vals_val_set(helium_env(1)%helium%input, &
@@ -1296,7 +1293,7 @@ CONTAINS
 
          ! Gather RNG state (in real_msg_gather vector) from all processors at
          ! logger%para_env%source
-         CALL mp_sum(real_msg_gather, helium_env(1)%comm)
+         CALL helium_env(1)%comm%sum(real_msg_gather)
 
          ! update the RNG state in the global input structure
          CALL section_vals_val_set(helium_env(1)%helium%input, &
@@ -1360,7 +1357,7 @@ CONTAINS
             END DO
 
             ! average over processors / helium environments
-            CALL mp_sum(helium_env(1)%helium%rdf_inst, helium_env(1)%comm)
+            CALL helium_env(1)%comm%sum(helium_env(1)%helium%rdf_inst)
             itmp = helium_env(1)%helium%num_env
             invproc = 1.0_dp/REAL(itmp, dp)
             helium_env(1)%helium%rdf_inst(:, :) = helium_env(1)%helium%rdf_inst(:, :)*invproc
@@ -1398,7 +1395,7 @@ CONTAINS
             END DO
 
             ! average over processors / helium environments
-            CALL mp_sum(helium_env(1)%helium%rho_inst, helium_env(1)%comm)
+            CALL helium_env(1)%comm%sum(helium_env(1)%helium%rho_inst)
             itmp = helium_env(1)%helium%num_env
             invproc = 1.0_dp/REAL(itmp, dp)
             helium_env(1)%helium%rho_inst(:, :, :, :) = helium_env(1)%helium%rho_inst(:, :, :, :)*invproc
@@ -1515,7 +1512,7 @@ CONTAINS
 ! **************************************************************************************************
    SUBROUTINE dump_csvr_restart_info(csvr, para_env, csvr_section)
       TYPE(csvr_system_type), POINTER                    :: csvr
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(section_vals_type), POINTER                   :: csvr_section
 
       CHARACTER(LEN=rng_record_length)                   :: rng_record
@@ -1557,7 +1554,7 @@ CONTAINS
       !  Collect data if there was no communication in this thermostat
       IF (csvr%map_info%dis_type == do_thermo_no_communication) THEN
          ! Collect data if there was no communication in this thermostat
-         CALL mp_sum(dwork, para_env%group)
+         CALL para_env%sum(dwork)
       ELSE
          ! Perform some check and collect data in case of communicating thermostats
          CALL communication_thermo_low2(dwork, rng_record_length, csvr%glob_num_csvr, para_env)
@@ -1579,7 +1576,7 @@ CONTAINS
 ! **************************************************************************************************
    SUBROUTINE dump_al_restart_info(al, para_env, al_section)
       TYPE(al_system_type), POINTER                      :: al
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(section_vals_type), POINTER                   :: al_section
 
       INTEGER                                            :: i
@@ -1633,7 +1630,7 @@ CONTAINS
 ! **************************************************************************************************
    SUBROUTINE dump_gle_restart_info(gle, para_env, gle_section)
       TYPE(gle_type), POINTER                            :: gle
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(section_vals_type), POINTER                   :: gle_section
 
       CHARACTER(LEN=rng_record_length)                   :: rng_record
@@ -1678,7 +1675,7 @@ CONTAINS
       !  Collect data if there was no communication in this thermostat
       IF (gle%map_info%dis_type == do_thermo_no_communication) THEN
          ! Collect data if there was no communication in this thermostat
-         CALL mp_sum(dwork, para_env%group)
+         CALL para_env%sum(dwork)
       ELSE
          ! Perform some check and collect data in case of communicating thermostats
          CALL communication_thermo_low2(dwork, rng_record_length, glob_num, para_env)
@@ -1688,7 +1685,7 @@ CONTAINS
 
       ALLOCATE (gle_per_proc(para_env%num_pe))
       gle_per_proc(:) = 0
-      CALL mp_allgather(gle%loc_num_gle, gle_per_proc, para_env%group)
+      CALL para_env%allgather(gle%loc_num_gle, gle_per_proc)
 
       ! Thermostat S variable info for restart
       NULLIFY (s_tmp)
@@ -1712,8 +1709,8 @@ CONTAINS
          ELSE
             work(:) = 0.0_dp
          END IF
-         CALL mp_bcast(work, iproc - 1, para_env%group)
-         CALL mp_bcast(index, iproc - 1, para_env%group)
+         CALL para_env%bcast(work, iproc - 1)
+         CALL para_env%bcast(index, iproc - 1)
          counter = 0
          DO i = 1, gle%ndim
             DO j = 1, gle_per_proc(iproc)
@@ -1751,7 +1748,7 @@ CONTAINS
 ! **************************************************************************************************
    SUBROUTINE collect_nose_restart_info(nhc, para_env, eta, veta, fnhc, mnhc)
       TYPE(lnhc_parameters_type), POINTER                :: nhc
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       REAL(KIND=dp), DIMENSION(:), POINTER               :: eta, veta, fnhc, mnhc
 
       INTEGER                                            :: counter, i, iproc, j, nhc_len, num_nhc, &
@@ -1767,7 +1764,7 @@ CONTAINS
       ALLOCATE (nhc_per_proc(para_env%num_pe))
       nhc_per_proc(:) = 0
 
-      CALL mp_allgather(numneed, nhc_per_proc, para_env%group)
+      CALL para_env%allgather(numneed, nhc_per_proc)
       tot_nhcneed = nhc%glob_num_nhc
 
       NULLIFY (work, index)
@@ -1792,8 +1789,8 @@ CONTAINS
          ELSE
             work(:) = 0.0_dp
          END IF
-         CALL mp_bcast(work, iproc - 1, para_env%group)
-         CALL mp_bcast(index, iproc - 1, para_env%group)
+         CALL para_env%bcast(work, iproc - 1)
+         CALL para_env%bcast(index, iproc - 1)
          counter = 0
          DO i = 1, nhc_len
             DO j = 1, nhc_per_proc(iproc)
@@ -1823,8 +1820,8 @@ CONTAINS
          ELSE
             work(:) = 0.0_dp
          END IF
-         CALL mp_bcast(work, iproc - 1, para_env%group)
-         CALL mp_bcast(index, iproc - 1, para_env%group)
+         CALL para_env%bcast(work, iproc - 1)
+         CALL para_env%bcast(index, iproc - 1)
          counter = 0
          DO i = 1, nhc_len
             DO j = 1, nhc_per_proc(iproc)
@@ -1854,8 +1851,8 @@ CONTAINS
          ELSE
             work(:) = 0.0_dp
          END IF
-         CALL mp_bcast(work, iproc - 1, para_env%group)
-         CALL mp_bcast(index, iproc - 1, para_env%group)
+         CALL para_env%bcast(work, iproc - 1)
+         CALL para_env%bcast(index, iproc - 1)
          counter = 0
          DO i = 1, nhc_len
             DO j = 1, nhc_per_proc(iproc)
@@ -1885,8 +1882,8 @@ CONTAINS
          ELSE
             work(:) = 0.0_dp
          END IF
-         CALL mp_bcast(work, iproc - 1, para_env%group)
-         CALL mp_bcast(index, iproc - 1, para_env%group)
+         CALL para_env%bcast(work, iproc - 1)
+         CALL para_env%bcast(index, iproc - 1)
          counter = 0
          DO i = 1, nhc_len
             DO j = 1, nhc_per_proc(iproc)
@@ -2330,12 +2327,12 @@ CONTAINS
       LOGICAL                                            :: print_info, write_velocities
       REAL(KIND=dp), ALLOCATABLE, DIMENSION(:, :)        :: rbuf
       TYPE(atomic_kind_list_type), POINTER               :: atomic_kinds
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(cp_subsys_type), POINTER                      :: subsys
       TYPE(force_env_type), POINTER                      :: my_force_env
       TYPE(lnhc_parameters_type), POINTER                :: nhc
       TYPE(molecule_kind_list_type), POINTER             :: molecule_kinds
       TYPE(molecule_list_type), POINTER                  :: molecules
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(particle_list_type), POINTER                  :: core_particles, particles, &
                                                             shell_particles
       TYPE(thermostat_type), POINTER                     :: thermostat_part, thermostat_shell
@@ -2764,7 +2761,7 @@ CONTAINS
       CHARACTER(LEN=default_string_length), INTENT(IN)   :: section_label
       INTEGER, INTENT(INOUT)                             :: n_char_size, n_dp_size, n_int_size
       LOGICAL, INTENT(IN)                                :: print_info
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
 
       CHARACTER(LEN=*), PARAMETER :: routineN = 'write_binary_thermostats_nose'
 

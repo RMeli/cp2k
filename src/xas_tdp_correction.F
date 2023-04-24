@@ -41,7 +41,6 @@ MODULE xas_tdp_correction
                                               cp_fm_to_fm_submat,&
                                               cp_fm_type
    USE cp_log_handling,                 ONLY: cp_logger_get_default_io_unit
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE dbcsr_api,                       ONLY: &
         dbcsr_copy, dbcsr_create, dbcsr_distribution_get, dbcsr_distribution_new, &
         dbcsr_distribution_release, dbcsr_distribution_type, dbcsr_get_info, dbcsr_p_type, &
@@ -62,7 +61,7 @@ MODULE xas_tdp_correction
    USE kinds,                           ONLY: dp
    USE machine,                         ONLY: m_flush
    USE mathlib,                         ONLY: complex_diag
-   USE message_passing,                 ONLY: mp_sum
+   USE message_passing,                 ONLY: mp_para_env_type
    USE parallel_gemm_api,               ONLY: parallel_gemm
    USE physcon,                         ONLY: evolt
    USE qs_environment_types,            ONLY: get_qs_env,&
@@ -125,12 +124,12 @@ CONTAINS
                                                             lulu_fock, lulu_work, lumo_work
       TYPE(cp_fm_type), ALLOCATABLE, DIMENSION(:)        :: all_coeffs, homo_coeffs, lumo_coeffs
       TYPE(cp_fm_type), POINTER                          :: mo_coeff
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: dbcsr_work, fock_matrix, matrix_ks
       TYPE(dbt_type), ALLOCATABLE, DIMENSION(:)          :: ja_X, oI_Y
       TYPE(dbt_type), ALLOCATABLE, DIMENSION(:, :)       :: mo_template
       TYPE(dft_control_type), POINTER                    :: dft_control
       TYPE(mo_set_type), DIMENSION(:), POINTER           :: mos
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(section_vals_type), POINTER                   :: xc_fun_empty, xc_fun_original, xc_section
 
       NULLIFY (xc_fun_empty, xc_fun_original, xc_section, mos, dft_control, dbcsr_work, &
@@ -470,9 +469,9 @@ CONTAINS
       INTEGER, ALLOCATABLE, DIMENSION(:)                 :: mo_blk_size
       REAL(dp)                                           :: c_os, c_ss, dg, diff, ds1, ds2, eps_I, &
                                                             eps_iter, g, omega_k, parts(4), s1, s2
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbt_type)                                     :: aj_Ib, aj_Ib_diff, aj_X, ja_Ik, &
                                                             ja_Ik_diff
+      TYPE(mp_para_env_type), POINTER                    :: para_env
 
       CALL timeset(routineN, handle)
 
@@ -619,7 +618,7 @@ CONTAINS
                CALL dbt_destroy(aj_Ib)
             END DO
 
-            CALL mp_sum(parts, para_env%group)
+            CALL para_env%sum(parts)
             s1 = parts(1); ds1 = parts(2)
             s2 = parts(3); ds2 = parts(4)
 
@@ -695,9 +694,9 @@ CONTAINS
       INTEGER, ALLOCATABLE, DIMENSION(:)                 :: mo_blk_size
       REAL(dp)                                           :: c_os, c_ss, dg, diff, ds1, ds2, eps_I, &
                                                             eps_iter, g, omega_k, parts(4), s1, s2
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbt_type)                                     :: aj_Ib, aj_Ib_diff, aj_X(2), ja_Ik, &
                                                             ja_Ik_diff
+      TYPE(mp_para_env_type), POINTER                    :: para_env
 
       CALL timeset(routineN, handle)
 
@@ -885,7 +884,7 @@ CONTAINS
 
                END DO
 
-               CALL mp_sum(parts, para_env%group)
+               CALL para_env%sum(parts)
                s1 = parts(1); ds1 = parts(2)
                s2 = parts(3); ds2 = parts(4)
 
@@ -957,11 +956,11 @@ CONTAINS
       INTEGER, DIMENSION(3)                              :: pdims
       LOGICAL                                            :: found
       REAL(dp), ALLOCATABLE, DIMENSION(:, :, :)          :: pblock
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbt_distribution_type)                        :: t_dist
       TYPE(dbt_iterator_type)                            :: iter
       TYPE(dbt_pgrid_type)                               :: t_pgrid
       TYPE(dbt_type)                                     :: pq_X_tmp, work
+      TYPE(mp_para_env_type), POINTER                    :: para_env
 
       NULLIFY (para_env)
 
@@ -971,7 +970,7 @@ CONTAINS
       nsgf_x = SIZE(xas_tdp_env%ri_inv_ex, 1)
       nblk_ri = 1
 
-      CALL dbt_pgrid_create(para_env%group, pdims, t_pgrid)
+      CALL dbt_pgrid_create(para_env, pdims, t_pgrid)
       ALLOCATE (proc_dist_1(natom), proc_dist_2(natom), orb_blk_size(natom))
       CALL dbt_get_info(xas_tdp_env%ri_3c_ex, proc_dist_1=proc_dist_1, proc_dist_2=proc_dist_2, &
                         blk_size_1=orb_blk_size)
@@ -1013,7 +1012,7 @@ CONTAINS
       !create the pgrid, based on the 2D dbcsr grid
       CALL dbt_pgrid_destroy(t_pgrid)
       pdims = 0
-      CALL dbt_pgrid_create(para_env%group, pdims, t_pgrid, tensor_dims=[natom, natom, 1])
+      CALL dbt_pgrid_create(para_env, pdims, t_pgrid, tensor_dims=[natom, natom, 1])
 
       !cyclic distribution accross all directions.
       ALLOCATE (proc_dist_3(nblk_ri))
@@ -1074,13 +1073,13 @@ CONTAINS
                                                             mo_dist_3, ri_blk_size, ri_dist_3
       INTEGER, DIMENSION(:, :), POINTER                  :: mat_pgrid
       TYPE(cp_1d_i_p_type), ALLOCATABLE, DIMENSION(:)    :: mo_blk_size, mo_col_dist, mo_row_dist
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_distribution_type)                      :: mat_dist
       TYPE(dbcsr_distribution_type), POINTER             :: std_mat_dist
       TYPE(dbcsr_type)                                   :: dbcsr_mo_coeffs
       TYPE(dbt_distribution_type)                        :: t_dist
       TYPE(dbt_pgrid_type)                               :: t_pgrid
       TYPE(dbt_type)                                     :: jq_X, pq_X, t_mo_coeffs
+      TYPE(mp_para_env_type), POINTER                    :: para_env
 
       NULLIFY (ao_blk_size, ao_col_dist, ao_row_dist, mo_dist_3, ri_blk_size, ri_dist_3, mat_pgrid, &
                para_env, std_mat_dist)
@@ -1106,7 +1105,7 @@ CONTAINS
          !Create the tensor pgrid. AOs and RI independent from spin
          IF (ispin == 1) THEN
             CALL dbt_get_info(pq_X, pdims=pdims, nblks_total=nblk_pqX)
-            CALL dbt_pgrid_create(para_env%group, pdims, t_pgrid)
+            CALL dbt_pgrid_create(para_env, pdims, t_pgrid)
             nblk_aos = nblk_pqX(1)
             nblk_ri = nblk_pqX(3)
          END IF
@@ -1136,7 +1135,7 @@ CONTAINS
          CALL dbt_default_distvec(nblk_aos, SIZE(mat_pgrid, 1), ao_blk_size, ao_row_dist)
          CALL dbt_default_distvec(nblk_mos(ispin), SIZE(mat_pgrid, 2), mo_blk_size(ispin)%array, &
                                   mo_col_dist(ispin)%array)
-         CALL dbcsr_distribution_new(mat_dist, group=para_env%group%get_handle(), pgrid=mat_pgrid, &
+         CALL dbcsr_distribution_new(mat_dist, group=para_env%get_handle(), pgrid=mat_pgrid, &
                                      row_dist=ao_row_dist, col_dist=mo_col_dist(ispin)%array)
 
          CALL dbcsr_create(dbcsr_mo_coeffs, name="MO coeffs", matrix_type="N", dist=mat_dist, &
@@ -1280,13 +1279,13 @@ CONTAINS
       INTEGER, DIMENSION(:, :), POINTER                  :: mat_pgrid
       LOGICAL                                            :: found
       REAL(dp), ALLOCATABLE, DIMENSION(:, :)             :: pblock
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_distribution_type), POINTER             :: std_mat_dist
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: pI_Y
       TYPE(dbt_distribution_type)                        :: t_dist
       TYPE(dbt_iterator_type)                            :: iter
       TYPE(dbt_pgrid_type)                               :: t_pgrid
       TYPE(dbt_type)                                     :: t_pI_Y, t_work
+      TYPE(mp_para_env_type), POINTER                    :: para_env
 
       CALL timeset(routineN, handle)
 
@@ -1320,7 +1319,7 @@ CONTAINS
 
          !preapre (oI_Y) tensor and (pI|Y) tensor in proper dist and blk sizes
          pdims_2d(1) = SIZE(mat_pgrid, 1); pdims_2d(2) = SIZE(mat_pgrid, 2)
-         CALL dbt_pgrid_create(para_env%group, pdims_2d, t_pgrid)
+         CALL dbt_pgrid_create(para_env, pdims_2d, t_pgrid)
 
          ALLOCATE (ri_col_dist(nblk_ri), ao_row_dist(nblk_aos), mo_row_dist(nblk_mos))
          CALL dbt_get_info(t_work, proc_dist_1=ao_row_dist)
@@ -1356,7 +1355,7 @@ CONTAINS
          !get optimal pgrid  for (oI|Y)
          CALL dbt_pgrid_destroy(t_pgrid)
          pdims_2d = 0
-         CALL dbt_pgrid_create(para_env%group, pdims_2d, t_pgrid, tensor_dims=[nblk_mos, nblk_ri])
+         CALL dbt_pgrid_create(para_env, pdims_2d, t_pgrid, tensor_dims=[nblk_mos, nblk_ri])
 
          CALL dbt_default_distvec(nblk_aos, pdims_2d(1), ao_blk_size, ao_row_dist)
          CALL dbt_default_distvec(nblk_mos, pdims_2d(1), mo_blk_size, mo_row_dist)
@@ -1755,9 +1754,9 @@ CONTAINS
       TYPE(cp_fm_type)                                   :: alpha_gs_coeffs, ao_domo_work, &
                                                             beta_gs_coeffs, domo_domo_work, &
                                                             img_fm, real_fm
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: matrix_ks
       TYPE(dbcsr_type), POINTER                          :: orb_soc_x, orb_soc_y, orb_soc_z
+      TYPE(mp_para_env_type), POINTER                    :: para_env
 
       NULLIFY (matrix_ks, para_env, blacs_env, ao_domo_struct, domo_domo_struct, &
                doso_doso_struct, orb_soc_x, orb_soc_y, orb_soc_z)

@@ -23,6 +23,7 @@ MODULE force_env_methods
    USE cell_types,                      ONLY: cell_clone,&
                                               cell_create,&
                                               cell_release,&
+                                              cell_sym_triclinic,&
                                               cell_type,&
                                               init_cell,&
                                               real_to_scaled,&
@@ -41,8 +42,6 @@ MODULE force_env_methods
    USE cp_output_handling,              ONLY: cp_print_key_finished_output,&
                                               cp_print_key_unit_nr,&
                                               low_print_level
-   USE cp_para_env,                     ONLY: cp_para_env_retain
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE cp_result_methods,               ONLY: cp_results_erase,&
                                               cp_results_mp_bcast,&
                                               get_results,&
@@ -95,8 +94,7 @@ MODULE force_env_methods
                                               dp
    USE machine,                         ONLY: m_memory
    USE mathlib,                         ONLY: abnormal_value
-   USE message_passing,                 ONLY: mp_sum,&
-                                              mp_sync
+   USE message_passing,                 ONLY: mp_para_env_type
    USE metadynamics_types,              ONLY: meta_env_type
    USE mixed_cdft_methods,              ONLY: mixed_cdft_build_weight,&
                                               mixed_cdft_calculate_coupling,&
@@ -157,8 +155,7 @@ MODULE force_env_methods
    USE string_utilities,                ONLY: compress
    USE virial_methods,                  ONLY: write_stress_tensor,&
                                               write_stress_tensor_components
-   USE virial_types,                    ONLY: cp_virial,&
-                                              symmetrize_virial,&
+   USE virial_types,                    ONLY: symmetrize_virial,&
                                               virial_p_type,&
                                               virial_type,&
                                               zero_virial
@@ -413,7 +410,7 @@ CONTAINS
       output_unit = cp_print_key_unit_nr(logger, force_env%force_env_section, "PRINT%PROGRAM_RUN_INFO", &
                                          extension=".Log")
       IF (atprop_env%energy) THEN
-         CALL mp_sum(atprop_env%atener, force_env%para_env%group)
+         CALL force_env%para_env%sum(atprop_env%atener)
          CALL force_env_get(force_env, potential_energy=e_pot)
          IF (output_unit > 0) THEN
             IF (logger%iter_info%print_level > low_print_level) THEN
@@ -469,7 +466,7 @@ CONTAINS
                                          extension=".Log")
 
       IF (atprop_env%stress) THEN
-         CALL mp_sum(atprop_env%atstress, force_env%para_env%group)
+         CALL force_env%para_env%sum(atprop_env%atstress)
          ! symmetrize (same as pv_virial)
          DO i = 1, SIZE(atprop_env%atstress, 3)
             atprop_env%atstress(:, :, i) = 0.5_dp*(atprop_env%atstress(:, :, i) &
@@ -548,7 +545,7 @@ CONTAINS
       REAL(kind=dp), PARAMETER                           :: default_dx = 0.001_dp
 
       INTEGER                                            :: i, ip, iq, j, k, natom, ncore, nshell, &
-                                                            output_unit
+                                                            output_unit, symmetry_id
       REAL(KIND=dp)                                      :: dx_w
       REAL(KIND=dp), DIMENSION(2)                        :: numer_energy
       REAL(KIND=dp), DIMENSION(3)                        :: s
@@ -612,6 +609,10 @@ CONTAINS
          END DO
       END IF
       CALL force_env_get(force_env, cell=cell)
+      ! Save cell symmetry (distorted cell has no symmetry)
+      symmetry_id = cell%symmetry_id
+      cell%symmetry_id = cell_sym_triclinic
+      !
       CALL cell_create(cell_local)
       CALL cell_clone(cell, cell_local)
       ! First change box
@@ -666,6 +667,8 @@ CONTAINS
       END DO
 
       ! Reset positions and rebuild original environment
+      cell%symmetry_id = symmetry_id
+      CALL init_cell(cell)
       DO i = 1, natom
          particles%els(i)%r = ref_pos_atom(i, :)
       END DO
@@ -746,7 +749,7 @@ CONTAINS
 
       TYPE(force_env_type), POINTER                      :: force_env
       TYPE(section_vals_type), POINTER                   :: root_section
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(global_environment_type), POINTER             :: globenv
       TYPE(fist_environment_type), OPTIONAL, POINTER     :: fist_env
       TYPE(qs_environment_type), OPTIONAL, POINTER       :: qs_env
@@ -782,7 +785,7 @@ CONTAINS
       CALL section_vals_retain(root_section)
 
       force_env%para_env => para_env
-      CALL cp_para_env_retain(force_env%para_env)
+      CALL force_env%para_env%retain()
 
       CALL section_vals_retain(force_env_section)
       force_env%force_env_section => force_env_section
@@ -942,7 +945,6 @@ CONTAINS
             NULLIFY (subsystems(iforce_eval)%subsys, particles(iforce_eval)%list)
             NULLIFY (results(iforce_eval)%results, virials(iforce_eval)%virial)
             ALLOCATE (virials(iforce_eval)%virial)
-            CALL zero_virial(virials(iforce_eval)%virial)
             CALL cp_result_create(results(iforce_eval)%results)
             IF (.NOT. ASSOCIATED(force_env%sub_force_env(iforce_eval)%force_env)) CYCLE
             ! From this point on the error is the sub_error
@@ -981,14 +983,14 @@ CONTAINS
                                              skip_external_control=.TRUE.)
 
             ! Only the rank 0 process collect info for each computation
-            IF (force_env%sub_force_env(iforce_eval)%force_env%para_env%ionode) THEN
+            IF (force_env%sub_force_env(iforce_eval)%force_env%para_env%is_source()) THEN
                CALL force_env_get(force_env%sub_force_env(iforce_eval)%force_env, &
                                   potential_energy=energy)
                CALL cp_subsys_get(subsystems(iforce_eval)%subsys, &
                                   virial=loc_virial, results=loc_results)
                energies(iforce_eval) = energy
                glob_natoms(iforce_eval) = natom
-               CALL cp_virial(loc_virial, virials(iforce_eval)%virial)
+               virials(iforce_eval)%virial = loc_virial
                CALL cp_result_copy(loc_results, results(iforce_eval)%results)
             END IF
             ! Deallocate map_index array
@@ -1002,18 +1004,18 @@ CONTAINS
                                        glob_natoms, virials, results)
       END IF
       ! Handling Parallel execution
-      CALL mp_sync(force_env%para_env%group)
+      CALL force_env%para_env%sync()
       ! Post CDFT operations
       CALL mixed_cdft_post_energy_forces(force_env)
       ! Let's transfer energy, natom, forces, virials
-      CALL mp_sum(energies, force_env%para_env%group)
-      CALL mp_sum(glob_natoms, force_env%para_env%group)
+      CALL force_env%para_env%sum(energies)
+      CALL force_env%para_env%sum(glob_natoms)
       ! Transfer forces
       DO iforce_eval = 1, nforce_eval
          ALLOCATE (global_forces(iforce_eval)%forces(3, glob_natoms(iforce_eval)))
          global_forces(iforce_eval)%forces = 0.0_dp
          IF (ASSOCIATED(force_env%sub_force_env(iforce_eval)%force_env)) THEN
-            IF (force_env%sub_force_env(iforce_eval)%force_env%para_env%ionode) THEN
+            IF (force_env%sub_force_env(iforce_eval)%force_env%para_env%is_source()) THEN
                ! Forces
                DO iparticle = 1, glob_natoms(iforce_eval)
                   global_forces(iforce_eval)%forces(:, iparticle) = &
@@ -1021,21 +1023,21 @@ CONTAINS
                END DO
             END IF
          END IF
-         CALL mp_sum(global_forces(iforce_eval)%forces, force_env%para_env%group)
+         CALL force_env%para_env%sum(global_forces(iforce_eval)%forces)
          !Transfer only the relevant part of the virial..
-         CALL mp_sum(virials(iforce_eval)%virial%pv_total, force_env%para_env%group)
-         CALL mp_sum(virials(iforce_eval)%virial%pv_kinetic, force_env%para_env%group)
-         CALL mp_sum(virials(iforce_eval)%virial%pv_virial, force_env%para_env%group)
-         CALL mp_sum(virials(iforce_eval)%virial%pv_xc, force_env%para_env%group)
-         CALL mp_sum(virials(iforce_eval)%virial%pv_fock_4c, force_env%para_env%group)
-         CALL mp_sum(virials(iforce_eval)%virial%pv_constraint, force_env%para_env%group)
+         CALL force_env%para_env%sum(virials(iforce_eval)%virial%pv_total)
+         CALL force_env%para_env%sum(virials(iforce_eval)%virial%pv_kinetic)
+         CALL force_env%para_env%sum(virials(iforce_eval)%virial%pv_virial)
+         CALL force_env%para_env%sum(virials(iforce_eval)%virial%pv_xc)
+         CALL force_env%para_env%sum(virials(iforce_eval)%virial%pv_fock_4c)
+         CALL force_env%para_env%sum(virials(iforce_eval)%virial%pv_constraint)
          !Transfer results
          source = 0
          IF (ASSOCIATED(force_env%sub_force_env(iforce_eval)%force_env)) THEN
-            IF (force_env%sub_force_env(iforce_eval)%force_env%para_env%ionode) &
+            IF (force_env%sub_force_env(iforce_eval)%force_env%para_env%is_source()) &
                source = force_env%para_env%mepos
          END IF
-         CALL mp_sum(source, force_env%para_env%group)
+         CALL force_env%para_env%sum(source)
          CALL cp_results_mp_bcast(results(iforce_eval)%results, source, force_env%para_env)
       END DO
 
@@ -1249,7 +1251,6 @@ CONTAINS
          NULLIFY (subsystems(iforce_eval)%subsys, particles(iforce_eval)%list)
          NULLIFY (results(iforce_eval)%results, virials(iforce_eval)%virial)
          ALLOCATE (virials(iforce_eval)%virial)
-         CALL zero_virial(virials(iforce_eval)%virial)
          CALL cp_result_create(results(iforce_eval)%results)
          IF (.NOT. ASSOCIATED(force_env%sub_force_env(iforce_eval)%force_env)) CYCLE
          ! Get all available subsys
@@ -1303,14 +1304,14 @@ CONTAINS
                                           calc_force=calculate_forces, &
                                           skip_external_control=.TRUE.)
          ! Only the rank 0 process collect info for each computation
-         IF (force_env%sub_force_env(iforce_eval)%force_env%para_env%ionode) THEN
+         IF (force_env%sub_force_env(iforce_eval)%force_env%para_env%is_source()) THEN
             CALL force_env_get(force_env%sub_force_env(iforce_eval)%force_env, &
                                potential_energy=energy)
             CALL cp_subsys_get(subsystems(iforce_eval)%subsys, &
                                virial=loc_virial, results=loc_results)
             energies(iforce_eval) = energy
             glob_natoms(iforce_eval) = natom
-            CALL cp_virial(loc_virial, virials(iforce_eval)%virial)
+            virials(iforce_eval)%virial = loc_virial
             CALL cp_result_copy(loc_results, results(iforce_eval)%results)
          END IF
          ! Deallocate map_index array
@@ -1355,10 +1356,10 @@ CONTAINS
                CALL force_env_get(force_env%sub_force_env(iforce_eval)%force_env, qs_env=qs_env)
             END IF
             CALL get_qs_env(qs_env, dft_control=dft_control)
-            IF (force_env%sub_force_env(iforce_eval)%force_env%para_env%ionode) &
+            IF (force_env%sub_force_env(iforce_eval)%force_env%para_env%is_source()) &
                force_env%mixed_env%strength(iforce_eval, :) = dft_control%qs_control%cdft_control%strength(:)
          END DO
-         CALL mp_sum(force_env%mixed_env%strength, force_env%para_env%group)
+         CALL force_env%para_env%sum(force_env%mixed_env%strength)
          ! Mixed CDFT: calculate ET coupling
          IF (force_env%mixed_env%do_mixed_et) THEN
             IF (MODULO(force_env%mixed_env%cdft_control%sim_step, force_env%mixed_env%et_freq) == 0) &
@@ -1502,7 +1503,7 @@ CONTAINS
          END IF
 
          ! Only the rank 0 process collect info for each computation
-         IF (force_env%sub_force_env(iforce_eval)%force_env%para_env%ionode) THEN
+         IF (force_env%sub_force_env(iforce_eval)%force_env%para_env%is_source()) THEN
             CALL force_env_get(force_env%sub_force_env(iforce_eval)%force_env, &
                                potential_energy=energy)
             CALL cp_subsys_get(subsystems(iforce_eval)%subsys, &
@@ -1519,10 +1520,10 @@ CONTAINS
       END DO
 
       ! Handling Parallel execution
-      CALL mp_sync(force_env%para_env%group)
+      CALL force_env%para_env%sync()
       ! Let's transfer energy, natom
-      CALL mp_sum(energies, force_env%para_env%group)
-      CALL mp_sum(glob_natoms, force_env%para_env%group)
+      CALL force_env%para_env%sum(energies)
+      CALL force_env%para_env%sum(glob_natoms)
 
       force_env%embed_env%energies = energies
 
@@ -1948,7 +1949,7 @@ CONTAINS
          END IF
 
          ! Substitute the correct energy in energies: only on rank 0
-         IF (force_env%sub_force_env(cluster_subsys_num)%force_env%para_env%ionode) THEN
+         IF (force_env%sub_force_env(cluster_subsys_num)%force_env%para_env%is_source()) THEN
             energies(cluster_subsys_num) = cluster_energy
          END IF
       END IF
@@ -1991,8 +1992,8 @@ CONTAINS
       LOGICAL                                            :: subsys_open_shell
       REAL(KIND=dp)                                      :: cluster_energy
       TYPE(cp_logger_type), POINTER                      :: logger
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dft_control_type), POINTER                    :: dft_control
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(opt_dmfet_pot_type)                           :: opt_dmfet
       TYPE(qs_energy_type), POINTER                      :: energy
       TYPE(section_vals_type), POINTER                   :: dft_section, input, opt_dmfet_section
@@ -2115,7 +2116,7 @@ CONTAINS
       END DO ! i_iter
 
       ! Substitute the correct energy in energies: only on rank 0
-      IF (force_env%sub_force_env(cluster_subsys_num)%force_env%para_env%ionode) THEN
+      IF (force_env%sub_force_env(cluster_subsys_num)%force_env%para_env%is_source()) THEN
          energies(cluster_subsys_num) = cluster_energy
       END IF
 

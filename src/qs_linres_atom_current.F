@@ -24,14 +24,13 @@ MODULE qs_linres_atom_current
                                               pbc
    USE cp_control_types,                ONLY: dft_control_type
    USE cp_log_handling,                 ONLY: cp_logger_get_default_io_unit
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE dbcsr_api,                       ONLY: dbcsr_get_block_p,&
                                               dbcsr_p_type
    USE input_constants,                 ONLY: current_gauge_atom,&
                                               current_gauge_r,&
                                               current_gauge_r_and_step_func
    USE kinds,                           ONLY: dp
-   USE message_passing,                 ONLY: mp_sum
+   USE message_passing,                 ONLY: mp_para_env_type
    USE orbital_pointers,                ONLY: indso,&
                                               nsoset
    USE particle_types,                  ONLY: particle_type
@@ -130,12 +129,12 @@ CONTAINS
                                                             r_coef_s, tmp_coeff, zero_coeff
       TYPE(alist_type), POINTER                          :: alist_ac, alist_bc
       TYPE(atomic_kind_type), DIMENSION(:), POINTER      :: atomic_kind_set
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: mat_a, mat_b, mat_c, mat_d
       TYPE(dft_control_type), POINTER                    :: dft_control
       TYPE(gto_basis_set_p_type), DIMENSION(:), POINTER  :: basis_set_list
       TYPE(gto_basis_set_type), POINTER                  :: basis_1c_set, basis_set_a, basis_set_b
       TYPE(jrho_atom_type), DIMENSION(:), POINTER        :: jrho1_atom_set
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(neighbor_list_iterator_p_type), &
          DIMENSION(:), POINTER                           :: nl_iterator
       TYPE(neighbor_list_set_p_type), DIMENSION(:), &
@@ -555,49 +554,49 @@ CONTAINS
                IF (is_not_associated) THEN
                   zero_coeff = 0.0_dp; tmp_coeff => zero_coeff
                END IF
-               CALL mp_sum(tmp_coeff, para_env%group)
+               CALL para_env%sum(tmp_coeff)
 
                tmp_coeff => jrho1_atom_set(iatom)%cjc0_s(ispin)%r_coef
                IF (is_not_associated) THEN
                   zero_coeff = 0.0_dp; tmp_coeff => zero_coeff
                END IF
-               CALL mp_sum(tmp_coeff, para_env%group)
+               CALL para_env%sum(tmp_coeff)
 
                tmp_coeff => jrho1_atom_set(iatom)%cjc_h(ispin)%r_coef
                IF (is_not_associated) THEN
                   zero_coeff = 0.0_dp; tmp_coeff => zero_coeff
                END IF
 
-               CALL mp_sum(tmp_coeff, para_env%group)
+               CALL para_env%sum(tmp_coeff)
                tmp_coeff => jrho1_atom_set(iatom)%cjc_s(ispin)%r_coef
                IF (is_not_associated) THEN
                   zero_coeff = 0.0_dp; tmp_coeff => zero_coeff
                END IF
-               CALL mp_sum(tmp_coeff, para_env%group)
+               CALL para_env%sum(tmp_coeff)
 
                tmp_coeff => jrho1_atom_set(iatom)%cjc_ii_h(ispin)%r_coef
                IF (is_not_associated) THEN
                   zero_coeff = 0.0_dp; tmp_coeff => zero_coeff
                END IF
-               CALL mp_sum(tmp_coeff, para_env%group)
+               CALL para_env%sum(tmp_coeff)
 
                tmp_coeff => jrho1_atom_set(iatom)%cjc_ii_s(ispin)%r_coef
                IF (is_not_associated) THEN
                   zero_coeff = 0.0_dp; tmp_coeff => zero_coeff
                END IF
-               CALL mp_sum(tmp_coeff, para_env%group)
+               CALL para_env%sum(tmp_coeff)
 
                tmp_coeff => jrho1_atom_set(iatom)%cjc_iii_h(ispin)%r_coef
                IF (is_not_associated) THEN
                   zero_coeff = 0.0_dp; tmp_coeff => zero_coeff
                END IF
-               CALL mp_sum(tmp_coeff, para_env%group)
+               CALL para_env%sum(tmp_coeff)
 
                tmp_coeff => jrho1_atom_set(iatom)%cjc_iii_s(ispin)%r_coef
                IF (is_not_associated) THEN
                   zero_coeff = 0.0_dp; tmp_coeff => zero_coeff
                END IF
-               CALL mp_sum(tmp_coeff, para_env%group)
+               CALL para_env%sum(tmp_coeff)
 
                IF (ASSOCIATED(jrho1_atom_set(iatom)%cjc0_h(ispin)%r_coef)) &
                   nbr_dbl = nbr_dbl + 8.0_dp*REAL(SIZE(jrho1_atom_set(iatom)%cjc0_h(ispin)%r_coef), dp)
@@ -654,13 +653,13 @@ CONTAINS
       REAL(dp), DIMENSION(:, :, :), POINTER              :: my_CG
       REAL(dp), DIMENSION(:, :, :, :), POINTER           :: my_CG_dxyz_asym
       TYPE(atomic_kind_type), DIMENSION(:), POINTER      :: atomic_kind_set
-      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dft_control_type), POINTER                    :: dft_control
       TYPE(grid_atom_type), POINTER                      :: grid_atom
       TYPE(gto_basis_set_type), POINTER                  :: basis_1c_set
       TYPE(harmonics_atom_type), POINTER                 :: harmonics
       TYPE(jrho_atom_type), DIMENSION(:), POINTER        :: jrho1_atom_set
       TYPE(jrho_atom_type), POINTER                      :: jrho1_atom
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(qs_kind_type), DIMENSION(:), POINTER          :: qs_kind_set
 
       CALL timeset(routineN, handle)
@@ -1411,7 +1410,7 @@ CONTAINS
       REAL(dp), ALLOCATABLE, DIMENSION(:, :)             :: ratom
       TYPE(atomic_kind_type), DIMENSION(:), POINTER      :: atomic_kind_set
       TYPE(cell_type), POINTER                           :: cell
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(dft_control_type), POINTER                    :: dft_control
       TYPE(grid_atom_type), POINTER                      :: grid_atom
       TYPE(harmonics_atom_type), POINTER                 :: harmonics

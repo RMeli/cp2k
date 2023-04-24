@@ -34,7 +34,6 @@ MODULE qs_scf_lanczos
                                               cp_fm_vectorsnorm
    USE cp_log_handling,                 ONLY: cp_to_string
    USE kinds,                           ONLY: dp
-   USE message_passing,                 ONLY: mp_sum
    USE parallel_gemm_api,               ONLY: parallel_gemm
    USE qs_mo_types,                     ONLY: get_mo_set,&
                                               mo_set_type
@@ -475,11 +474,7 @@ CONTAINS
                CALL cp_fm_release(t_mat)
                CALL cp_fm_release(t_vec)
                DEALLOCATE (a_mat, b_mat, b2_mat, t_mat, t_vec)
-               DO ik = 1, krylov_space%nkrylov
-                  CALL cp_fm_release(v_mat(ik))
-               END DO
-               DEALLOCATE (v_mat)
-
+               CALL cp_fm_release(v_mat)
             END IF
             CALL cp_fm_release(c2_tmp)
             CALL cp_fm_release(c3_tmp)
@@ -720,7 +715,7 @@ CONTAINS
                CALL dgemm('T', 'N', nmob, nmob, SIZE(hc%local_data, 1), 1.0_dp, a_loc(1, 1), &
                           SIZE(hc%local_data, 1), b_loc(1, 1), SIZE(hc%local_data, 1), 0.0_dp, a_block(1, 1), nmob)
             END IF
-            CALL mp_sum(a_block, hc%matrix_struct%para_env%group)
+            CALL hc%matrix_struct%para_env%sum(a_block)
 
             !Compute the residual matrix R for next
             !factorisation
@@ -760,7 +755,7 @@ CONTAINS
                   CALL dgemm('T', 'N', nmob, nmob, SIZE(hc%local_data, 1), 1.0_dp, a_loc(1, 1), &
                              SIZE(hc%local_data, 1), b_loc(1, 1), SIZE(hc%local_data, 1), 0.0_dp, a_block(1, 1), nmob)
                END IF
-               CALL mp_sum(a_block, hc%matrix_struct%para_env%group)
+               CALL hc%matrix_struct%para_env%sum(a_block)
 
                !Compute the residual matrix R for next
                !factorisation
@@ -840,7 +835,7 @@ CONTAINS
                           SIZE(v_tmp%local_data, 1), b_loc(1, 1), SIZE(v_tmp%local_data, 1), &
                           0.0_dp, q_mat(1, 1), nmob)
             END IF
-            CALL mp_sum(q_mat, hc%matrix_struct%para_env%group)
+            CALL hc%matrix_struct%para_env%sum(q_mat)
 
             ALLOCATE (itaken(ndim))
             itaken = 0
@@ -873,10 +868,8 @@ CONTAINS
             DEALLOCATE (t_mat)
             DEALLOCATE (a_block)
             DEALLOCATE (b_block)
-            DO ik = 1, krylov_space%nkrylov
-               CALL cp_fm_release(v_mat(ik))
-            END DO
-            DEALLOCATE (v_mat)
+
+            CALL cp_fm_release(v_mat)
 
          END DO ! ib
 

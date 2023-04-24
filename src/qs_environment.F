@@ -34,7 +34,6 @@ MODULE qs_environment
    USE cell_types,                      ONLY: cell_type
    USE cp_blacs_env,                    ONLY: cp_blacs_env_create,&
                                               cp_blacs_env_release,&
-                                              cp_blacs_env_retain,&
                                               cp_blacs_env_type
    USE cp_control_types,                ONLY: dft_control_type,&
                                               dftb_control_type,&
@@ -58,8 +57,6 @@ MODULE qs_environment
                                               cp_print_key_finished_output,&
                                               cp_print_key_should_output,&
                                               cp_print_key_unit_nr
-   USE cp_para_env,                     ONLY: cp_para_env_retain
-   USE cp_para_types,                   ONLY: cp_para_env_type
    USE cp_subsys_types,                 ONLY: cp_subsys_type
    USE cp_symmetry,                     ONLY: write_symmetry
    USE distribution_1d_types,           ONLY: distribution_1d_release,&
@@ -121,6 +118,7 @@ MODULE qs_environment
    USE lri_environment_types,           ONLY: lri_environment_type
    USE machine,                         ONLY: m_flush
    USE mathconstants,                   ONLY: pi
+   USE message_passing,                 ONLY: mp_para_env_type
    USE molecule_kind_types,             ONLY: molecule_kind_type,&
                                               write_molecule_kind_set
    USE molecule_types,                  ONLY: molecule_type
@@ -240,7 +238,7 @@ CONTAINS
                       qmmm, qmmm_env_qm, force_env_section, subsys_section, use_motion_section)
 
       TYPE(qs_environment_type), POINTER                 :: qs_env
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(section_vals_type), OPTIONAL, POINTER         :: root_section
       TYPE(global_environment_type), OPTIONAL, POINTER   :: globenv
       TYPE(cp_subsys_type), OPTIONAL, POINTER            :: cp_subsys
@@ -385,14 +383,9 @@ CONTAINS
       END IF
 
       ! more kpoint stuff
-      kpoints%para_env => para_env
-      CALL cp_para_env_retain(para_env)
-      CALL get_qs_env(qs_env=qs_env, blacs_env=blacs_env)
-      kpoints%blacs_env_all => blacs_env
-      CALL cp_blacs_env_retain(blacs_env)
-      CALL get_qs_env(qs_env=qs_env, do_kpoints=do_kpoints)
+      CALL get_qs_env(qs_env=qs_env, do_kpoints=do_kpoints, blacs_env=blacs_env)
       IF (do_kpoints) THEN
-         CALL kpoint_env_initialize(kpoints)
+         CALL kpoint_env_initialize(kpoints, para_env, blacs_env)
          CALL kpoint_initialize_mos(kpoints, qs_env%mos)
          CALL get_qs_env(qs_env=qs_env, wf_history=wf_history)
          CALL wfi_create_for_kp(wf_history)
@@ -514,7 +507,7 @@ CONTAINS
                              silent)
 
       TYPE(qs_environment_type), POINTER                 :: qs_env
-      TYPE(cp_para_env_type), POINTER                    :: para_env
+      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(qs_subsys_type), POINTER                      :: subsys
       TYPE(cell_type), POINTER                           :: cell, cell_ref
       LOGICAL, INTENT(in)                                :: use_ref_cell
@@ -1544,6 +1537,18 @@ CONTAINS
                           "Try UKS instead of ROKS")
          END IF
       END IF
+      IF (dft_control%low_spin_roks) THEN
+         SELECT CASE (dft_control%qs_control%method_id)
+         CASE DEFAULT
+         CASE (do_method_xtb, do_method_dftb)
+            CALL cp_abort(__LOCATION__, &
+                          "xTB/DFTB methods are not compatible with low spin ROKS.")
+         CASE (do_method_rm1, do_method_am1, do_method_mndo, do_method_pm3, &
+               do_method_pm6, do_method_pm6fm, do_method_mndod, do_method_pnnl)
+            CALL cp_abort(__LOCATION__, &
+                          "SE methods are not compatible with low spin ROKS.")
+         END SELECT
+      END IF
 
       ! in principle the restricted calculation could be performed
       ! using just one set of MOs and special casing most of the code
@@ -1576,7 +1581,7 @@ CONTAINS
 
       CALL set_qs_env(qs_env, mos=mos)
 
-! allocate mos when switch_surf_dip is triggered [SGh]
+      ! allocate mos when switch_surf_dip is triggered [SGh]
       IF (dft_control%switch_surf_dip) THEN
          ALLOCATE (mos_last_converged(dft_control%nspins))
          DO ispin = 1, dft_control%nspins

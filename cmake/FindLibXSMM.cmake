@@ -19,6 +19,12 @@ if(PKG_CONFIG_FOUND)
   pkg_check_modules(CP2K_LIBXSMMEXT IMPORTED_TARGET GLOBAL libxsmmext)
   pkg_check_modules(CP2K_LIBXSMMF IMPORTED_TARGET GLOBAL libxsmmf)
   pkg_check_modules(CP2K_LIBXSMMNOBLAS IMPORTED_TARGET GLOBAL libxsmmnoblas)
+
+  # i need to do it twice because of dbcsr build option
+  pkg_check_modules(LIBXSMM QUIET IMPORTED_TARGET GLOBAL libxsmm)
+  pkg_check_modules(LIBXSMMEXT QUIET IMPORTED_TARGET GLOBAL libxsmmext)
+  pkg_check_modules(LIBXSMMF QUIET IMPORTED_TARGET GLOBAL libxsmmf)
+  pkg_check_modules(LIBXSMMNOBLAS QUIET IMPORTED_TARGET GLOBAL libxsmmnoblas)
 endif()
 
 if(NOT CP2K_LIBXSMM_FOUND)
@@ -60,7 +66,7 @@ if(NOT TARGET CP2K::LibXSMM::libxsmm)
 
     set_target_properties(
       CP2K::LibXSMM::${__lib} PROPERTIES INTERFACE_LINK_LIBRARIES
-                                        "${${__lib_search_up}_LINK_LIBRARIES}")
+                                         "${${__lib_search_up}_LINK_LIBRARIES}")
 
     if(CP2K_LIBXSMM_INCLUDE_DIRS)
       set_target_properties(
