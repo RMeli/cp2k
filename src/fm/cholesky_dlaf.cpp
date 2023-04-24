@@ -8,15 +8,14 @@
 // SPDX-License-Identifier: BSD-3-Clause
 //
 
-
 #include <blas/util.hh>
 #include <cstdlib>
 
 #include <dlaf/communication/communicator.h>
 #include <dlaf/communication/communicator_grid.h>
 #include <dlaf/communication/error.h>
-#include <dlaf/factorization/cholesky.h>
 #include <dlaf/eigensolver/eigensolver.h>
+#include <dlaf/factorization/cholesky.h>
 #include <dlaf/init.h>
 #include <dlaf/matrix/distribution.h>
 #include <dlaf/matrix/index.h>
@@ -102,11 +101,9 @@ private:
   int old_threads;
 };
 
-template <typename T> void pxpotrf_dla(
-    char uplo__, int n__, T* a__, int ia__, int ja__, int* desca__,
-    int& info__
-)
-{
+template <typename T>
+void pxpotrf_dla(char uplo__, int n__, T *a__, int ia__, int ja__, int *desca__,
+                 int &info__) {
 
   if (uplo__ != 'U' && uplo__ != 'u' && uplo__ != 'L' && uplo__ != 'l') {
     std::cerr << "DLA Cholesky : The UpLo parameter has a incorrect value. ";
@@ -137,7 +134,7 @@ template <typename T> void pxpotrf_dla(
 
   // block sizes
   int nb, mb;
-  
+
   // retrive the matrix sizes
   m = desca__[3];
   n = desca__[2];
@@ -164,16 +161,15 @@ template <typename T> void pxpotrf_dla(
   MPI_Comm_size(comm, &size);
   Cblacs_gridinfo(desca__[1], dims, dims + 1, coords, coords + 1);
 
-  dlaf::comm::CommunicatorGrid comm_grid(world, dims[0], dims[1], dlaf::common::Ordering::RowMajor);
-  
+  dlaf::comm::CommunicatorGrid comm_grid(world, dims[0], dims[1],
+                                         dlaf::common::Ordering::RowMajor);
+
   // Allocate memory for the matrix
   dlaf::GlobalElementSize matrix_size(n, m);
   dlaf::TileElementSize block_size(nb, mb);
-  dlaf::comm::Index2D src_rank_index(0,0);
-  dlaf::matrix::Distribution distribution(matrix_size,
-                                          block_size,
-                                          comm_grid.size(),
-                                          comm_grid.rank(),
+  dlaf::comm::Index2D src_rank_index(0, 0);
+  dlaf::matrix::Distribution distribution(matrix_size, block_size,
+                                          comm_grid.size(), comm_grid.rank(),
                                           src_rank_index);
   int rank = 0;
   MPI_Comm_rank(comm, &rank);
@@ -182,61 +178,64 @@ template <typename T> void pxpotrf_dla(
   const int ld_ = desca__[8];
 
   dlaf::matrix::LayoutInfo layout = colMajorLayout(distribution, ld_);
-  dlaf::matrix::Matrix<T, dlaf::Device::CPU> mat(std::move(distribution), layout, a__);
+  dlaf::matrix::Matrix<T, dlaf::Device::CPU> mat(std::move(distribution),
+                                                 layout, a__);
 
   {
-    dlaf::matrix::MatrixMirror<T, dlaf::Device::Default, dlaf::Device::CPU> matrix(mat);
+    dlaf::matrix::MatrixMirror<T, dlaf::Device::Default, dlaf::Device::CPU>
+        matrix(mat);
 
-    switch(uplo__) {
-     case 'U':
-     case 'u':
-       dlaf::factorization::cholesky<dlaf::Backend::Default, dlaf::Device::Default, T>(comm_grid, blas::Uplo::Upper, matrix.get());
-       break;
+    switch (uplo__) {
+    case 'U':
+    case 'u':
+      dlaf::factorization::cholesky<dlaf::Backend::Default,
+                                    dlaf::Device::Default, T>(
+          comm_grid, blas::Uplo::Upper, matrix.get());
+      break;
     case 'L':
     case 'l':
-      dlaf::factorization::cholesky<dlaf::Backend::Default, dlaf::Device::Default, T>(comm_grid, blas::Uplo::Lower, matrix.get());
+      dlaf::factorization::cholesky<dlaf::Backend::Default,
+                                    dlaf::Device::Default, T>(
+          comm_grid, blas::Uplo::Lower, matrix.get());
       break;
     default:
       break;
     }
   } // Destroy MatrixMirror; copy results back to Device::CPU
-  
+
   pika::suspend();
   info__ = 0;
 }
 
-extern "C" void pdpotrf_dlaf_(char *uplo__, int n__, double *a__, int ia__, int ja__, int *desca__, int *info__)
-{
+extern "C" void pdpotrf_dlaf_(char *uplo__, int n__, double *a__, int ia__,
+                              int ja__, int *desca__, int *info__) {
   pxpotrf_dla<double>(*uplo__, n__, a__, ia__, ja__, desca__, *info__);
 }
 
-extern "C" void pspotrf_dlaf_(char *uplo__, int n__, float *a__, int ia__, int ja__, int *desca__, int *info__)
-{
+extern "C" void pspotrf_dlaf_(char *uplo__, int n__, float *a__, int ia__,
+                              int ja__, int *desca__, int *info__) {
   pxpotrf_dla<float>(*uplo__, n__, a__, ia__, ja__, desca__, *info__);
 }
 
-extern "C" void pdpotrf_dlaf(char *uplo__, int n__, double *a__, int ia__, int ja__, int *desca__, int *info__)
-{
+extern "C" void pdpotrf_dlaf(char *uplo__, int n__, double *a__, int ia__,
+                             int ja__, int *desca__, int *info__) {
   pxpotrf_dla<double>(*uplo__, n__, a__, ia__, ja__, desca__, *info__);
 }
 
-extern "C" void pspotrf_dlaf(char *uplo__, int n__, float *a__, int ia__, int ja__, int *desca__, int *info__)
-{
+extern "C" void pspotrf_dlaf(char *uplo__, int n__, float *a__, int ia__,
+                             int ja__, int *desca__, int *info__) {
   pxpotrf_dla<float>(*uplo__, n__, a__, ia__, ja__, desca__, *info__);
 }
 
-template <typename T> 
-void pdsyevd_dlaf_cpp(char jobz__, char uplo__, int n__, 
-                      T* a__, int ia__, int ja__, int* desca__,
-                      T* w__, T* z__, int iz__, int jz__, int* desc_z__,
-                      T* work__, int lwork__, int* iwork__, int liwork__,
-                      int& info__)
-{
+template <typename T>
+void pdsyevd_dlaf_cpp(char jobz__, char uplo__, int n__, T *a__, int ia__,
+                      int ja__, int *desca__, T *w__, T *z__, int iz__,
+                      int jz__, int *desc_z__, T *work__, int lwork__,
+                      int *iwork__, int liwork__, int &info__) {
   // if (uplo__ != 'U' && uplo__ != 'u' && uplo__ != 'L' && uplo__ != 'l') {
-  //   std::cerr << "DLAF Eigensolver: The UpLo parameter has a incorrect value. ";
-  //   std::cerr << "Please check the scalapack documentation.\n";
-  //   info__ = -1;
-  //   return;
+  //   std::cerr << "DLAF Eigensolver: The UpLo parameter has a incorrect value.
+  //   "; std::cerr << "Please check the scalapack documentation.\n"; info__ =
+  //   -1; return;
   // }
 
   if (desca__[0] != 1) {
@@ -257,17 +256,17 @@ void pdsyevd_dlaf_cpp(char jobz__, char uplo__, int n__,
   // Retrive total matrix sizes
   int n = desca__[2]; // Number of cols
   int m = desca__[3]; // Number of rows
- 
+
   // Retrieve matrix blocks sizes
   int mb = desca__[4]; // Blocking factor for cols
-  int nb = desca__[5]; // Blocking factor for rows 
+  int nb = desca__[5]; // Blocking factor for rows
 
   // Get MPI communicator from BLACS context
   MPI_Comm comm = get_communicator(desca__[1]); // From BLACS context
   dlaf::comm::Communicator world(comm);
 
   DLAF_MPI_CHECK_ERROR(MPI_Barrier(world));
-  
+
   // TODO: Remove
   int rank = 0;
   MPI_Comm_rank(comm, &rank);
@@ -277,68 +276,80 @@ void pdsyevd_dlaf_cpp(char jobz__, char uplo__, int n__,
 
   int dims[2] = {0, 0};
   int coords[2] = {-1, -1};
-   
+
   // Get calling process coordinates in BLACS grid (and grid dimesnios)
   Cblacs_gridinfo(desca__[1], &dims[0], &dims[1], &coords[0], &coords[1]);
 
   // Define DLAF communication grid (same size as BLACS grid)
-  dlaf::comm::CommunicatorGrid comm_grid(world, dims[0], dims[1], dlaf::common::Ordering::RowMajor); // TODO: Is RowMajor correct here?
+  dlaf::comm::CommunicatorGrid comm_grid(
+      world, dims[0], dims[1],
+      dlaf::common::Ordering::RowMajor); // TODO: Is RowMajor correct here?
 
   // Allocate memory for the matrix
   dlaf::GlobalElementSize matrix_size(n, m);
   dlaf::TileElementSize block_size(nb, mb);
-  dlaf::comm::Index2D src_rank_index(0,0); // TODO: Get from BLACS?
+  dlaf::comm::Index2D src_rank_index(0, 0); // TODO: Get from BLACS?
 
   // Contains information about size and distribution of the matrix
-  dlaf::matrix::Distribution distribution(matrix_size,
-                                          block_size,
-                                          comm_grid.size(),
-                                          comm_grid.rank(),
+  dlaf::matrix::Distribution distribution(matrix_size, block_size,
+                                          comm_grid.size(), comm_grid.rank(),
                                           src_rank_index);
 
   // leading dimension of local array
   const int lda_ = desca__[8];
 
-  // Contains information about how the elements of the matrix are stored (and where)
-  dlaf::matrix::LayoutInfo layout = dlaf::matrix::colMajorLayout(distribution, lda_);
+  // Contains information about how the elements of the matrix are stored (and
+  // where)
+  dlaf::matrix::LayoutInfo layout =
+      dlaf::matrix::colMajorLayout(distribution, lda_);
 
   // DLAF matrix, manages the correct dependencies of taks involving tiles
-  dlaf::matrix::Matrix<T, dlaf::Device::CPU> host_matrix(distribution, layout, a__);
+  dlaf::matrix::Matrix<T, dlaf::Device::CPU> host_matrix(distribution, layout,
+                                                         a__);
 
   // uplo__ checked above
-  auto dlaf_uplo = uplo__ == 'U' or uplo__ == 'u' ? blas::Uplo::Upper : blas::Uplo::Lower;
+  auto dlaf_uplo =
+      uplo__ == 'U' or uplo__ == 'u' ? blas::Uplo::Upper : blas::Uplo::Lower;
 
-  if (rank == 0) std::cerr << "Calling DLAF eigensolver..." << std::endl;
-  
+  if (rank == 0)
+    std::cerr << "Calling DLAF eigensolver..." << std::endl;
+
   // Create DLAF matrices from CP2K-allocated ones
-  dlaf::matrix::Matrix<T, dlaf::Device::CPU> eigenvectors_cp2k(distribution, layout, z__); // Distributed eigenvectors
-  auto eigenvalues_cp2k = dlaf::matrix::createMatrixFromColMajor<dlaf::Device::CPU>({n__, 1}, {block_size.rows(), 1}, n__, w__);
-  
+  dlaf::matrix::Matrix<T, dlaf::Device::CPU> eigenvectors_cp2k(
+      distribution, layout, z__); // Distributed eigenvectors
+  auto eigenvalues_cp2k =
+      dlaf::matrix::createMatrixFromColMajor<dlaf::Device::CPU>(
+          {n__, 1}, {block_size.rows(), 1}, n__, w__);
+
   {
     // Create matrix mirrors
-    dlaf::matrix::MatrixMirror<T, dlaf::Device::Default, dlaf::Device::CPU> matrix(host_matrix);
-    dlaf::matrix::MatrixMirror<T, dlaf::Device::Default, dlaf::Device::CPU> eigenvalues(eigenvalues_cp2k);
-    dlaf::matrix::MatrixMirror<T, dlaf::Device::Default, dlaf::Device::CPU> eigenvectors(eigenvectors_cp2k);
-  
+    dlaf::matrix::MatrixMirror<T, dlaf::Device::Default, dlaf::Device::CPU>
+        matrix(host_matrix);
+    dlaf::matrix::MatrixMirror<T, dlaf::Device::Default, dlaf::Device::CPU>
+        eigenvalues(eigenvalues_cp2k);
+    dlaf::matrix::MatrixMirror<T, dlaf::Device::Default, dlaf::Device::CPU>
+        eigenvectors(eigenvectors_cp2k);
+
     // WARN: Hard-coded to LOWER, use dlaf_uplo instead
-    dlaf::eigensolver::eigensolver<dlaf::Backend::Default, dlaf::Device::Default, T>(comm_grid, blas::Uplo::Lower, matrix.get(), eigenvalues.get(), eigenvectors.get());
+    dlaf::eigensolver::eigensolver<dlaf::Backend::Default,
+                                   dlaf::Device::Default, T>(
+        comm_grid, blas::Uplo::Lower, matrix.get(), eigenvalues.get(),
+        eigenvectors.get());
   } // Destroy mirrors
 
-  if(rank == 0) std::cerr << "DLAF eigensolver terminated successfully!" << std::endl;
+  if (rank == 0)
+    std::cerr << "DLAF eigensolver terminated successfully!" << std::endl;
 
   pika::suspend();
   info__ = 0;
 }
 
-extern "C" void pdsyevd_dlaf(char* jobz__, char* uplo__, int n__, 
-                      double* a__, int ia__, int ja__, int* desca__,
-                      double* w__, double* z__, int iz__, int jz__, int* desc_z__,
-                      double* work__, int lwork__, int* iwork__, int liwork__,
-                      int *info__)
-{
-  pdsyevd_dlaf_cpp<double>(*jobz__, *uplo__, n__, 
-                      a__, ia__, ja__, desca__,
-                      w__, z__, iz__, jz__, desc_z__,
-                      work__, lwork__, iwork__, liwork__,
-                      *info__);
+extern "C" void pdsyevd_dlaf(char *jobz__, char *uplo__, int n__, double *a__,
+                             int ia__, int ja__, int *desca__, double *w__,
+                             double *z__, int iz__, int jz__, int *desc_z__,
+                             double *work__, int lwork__, int *iwork__,
+                             int liwork__, int *info__) {
+  pdsyevd_dlaf_cpp<double>(*jobz__, *uplo__, n__, a__, ia__, ja__, desca__, w__,
+                           z__, iz__, jz__, desc_z__, work__, lwork__, iwork__,
+                           liwork__, *info__);
 }
