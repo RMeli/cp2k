@@ -84,7 +84,7 @@ extern "C" void dlaf_init() {
 
 extern "C" void dlaf_finalize() {
   pika::resume();
-  pika::async([] { pika::finalize(); });
+  pika::finalize();
   dlaf::finalize();
   pika::stop();
   dlaf_init_ = false;
@@ -203,6 +203,8 @@ void pxpotrf_dla(char uplo__, int n__, T *a__, int ia__, int ja__, int *desca__,
     }
   } // Destroy MatrixMirror; copy results back to Device::CPU
 
+  mat.waitLocalTiles();
+
   pika::suspend();
   info__ = 0;
 }
@@ -283,7 +285,7 @@ void pdsyevd_dlaf_cpp(char jobz__, char uplo__, int n__, T *a__, int ia__,
   // Define DLAF communication grid (same size as BLACS grid)
   dlaf::comm::CommunicatorGrid comm_grid(
       world, dims[0], dims[1],
-      dlaf::common::Ordering::RowMajor); // TODO: Is RowMajor correct here?
+      dlaf::common::Ordering::RowMajor);
 
   // Allocate memory for the matrix
   dlaf::GlobalElementSize matrix_size(n, m);
@@ -336,6 +338,8 @@ void pdsyevd_dlaf_cpp(char jobz__, char uplo__, int n__, T *a__, int ia__,
         comm_grid, blas::Uplo::Lower, matrix.get(), eigenvalues.get(),
         eigenvectors.get());
   } // Destroy mirrors
+  
+  eigenvalues_cp2k.waitLocalTiles();
 
   if (rank == 0)
     std::cerr << "DLAF eigensolver terminated successfully!" << std::endl;
