@@ -33,8 +33,8 @@
 
 // TODO: Remove once https://github.com/eth-cscs/DLA-Future/pull/668 is
 // merged.
-//#include <mkl_service.h>
-//#include <omp.h>
+// #include <mkl_service.h>
+// #include <omp.h>
 
 static bool dlaf_init_ = false;
 
@@ -102,8 +102,10 @@ extern "C" void dlaf_finalize() {
 //   int old_threads:;
 // };
 
-std::tuple<dlaf::matrix::Distribution, dlaf::matrix::LayoutInfo, dlaf::comm::CommunicatorGrid> dlaf_setup(int* desca__){
-  int m, n; // Matrix sizes
+std::tuple<dlaf::matrix::Distribution, dlaf::matrix::LayoutInfo,
+           dlaf::comm::CommunicatorGrid>
+dlaf_setup(int *desca__) {
+  int m, n;   // Matrix sizes
   int nb, mb; // Block sizes
 
   // retrive the matrix sizes
@@ -112,16 +114,15 @@ std::tuple<dlaf::matrix::Distribution, dlaf::matrix::LayoutInfo, dlaf::comm::Com
 
   nb = desca__[5];
   mb = desca__[4];
-  
+
   MPI_Comm comm = get_communicator(desca__[1]);
-  
+
   dlaf::comm::Communicator world(comm);
   DLAF_MPI_CHECK_ERROR(MPI_Barrier(world));
-  
+
   int dims[2] = {0, 0};
   int periods[2] = {0, 0};
   int coords[2] = {-1, -1};
-  
 
   Cblacs_gridinfo(desca__[1], dims, dims + 1, coords, coords + 1);
 
@@ -143,8 +144,8 @@ std::tuple<dlaf::matrix::Distribution, dlaf::matrix::LayoutInfo, dlaf::comm::Com
 }
 
 template <typename T>
-void pxpotrf_dlaf(char uplo__, int n__, T *a__, int ia__, int ja__, int *desca__,
-                 int &info__) {
+void pxpotrf_dlaf(char uplo__, int n__, T *a__, int ia__, int ja__,
+                  int *desca__, int &info__) {
 
   if (uplo__ != 'U' && uplo__ != 'u' && uplo__ != 'L' && uplo__ != 'l') {
     std::cerr << "DLA Cholesky : The UpLo parameter has a incorrect value. ";
@@ -166,8 +167,8 @@ void pxpotrf_dlaf(char uplo__, int n__, T *a__, int ia__, int ja__, int *desca__
     info__ = -1;
   }
 
-// TODO: Remove
-//  single_threaded_omp sto{};
+  // TODO: Remove
+  //  single_threaded_omp sto{};
 
   pika::resume();
 
@@ -179,7 +180,7 @@ void pxpotrf_dlaf(char uplo__, int n__, T *a__, int ia__, int ja__, int *desca__
   // DONE - fortran interface uplo
   //      - cblcs call
   // DONE - remove omp/mkl_set_num_threads calls (will be handled by DLAF)
-  
+
   auto [distribution, layout, comm_grid] = dlaf_setup(desca__);
 
   dlaf::matrix::Matrix<T, dlaf::Device::CPU> mat(std::move(distribution),
@@ -188,14 +189,13 @@ void pxpotrf_dlaf(char uplo__, int n__, T *a__, int ia__, int ja__, int *desca__
   {
     dlaf::matrix::MatrixMirror<T, dlaf::Device::Default, dlaf::Device::CPU>
         matrix(mat);
-  
+
     // uplo__ checked above
     auto dlaf_uplo =
-      uplo__ == 'U' or uplo__ == 'u' ? blas::Uplo::Upper : blas::Uplo::Lower;
+        uplo__ == 'U' or uplo__ == 'u' ? blas::Uplo::Upper : blas::Uplo::Lower;
 
-    dlaf::factorization::cholesky<dlaf::Backend::Default,
-                                    dlaf::Device::Default, T>(
-          comm_grid, dlaf_uplo, matrix.get());
+    dlaf::factorization::cholesky<dlaf::Backend::Default, dlaf::Device::Default,
+                                  T>(comm_grid, dlaf_uplo, matrix.get());
   } // Destroy MatrixMirror; copy results back to Device::CPU
 
   mat.waitLocalTiles();
@@ -215,10 +215,10 @@ extern "C" void pspotrf_dlaf(char *uplo__, int n__, float *a__, int ia__,
 }
 
 template <typename T>
-void pxsyevd_dlaf(char jobz__, char uplo__, int n__, T *a__, int ia__,
-                      int ja__, int *desca__, T *w__, T *z__, int iz__,
-                      int jz__, int *desc_z__, T *work__, int lwork__,
-                      int *iwork__, int liwork__, int &info__) {
+void pxsyevd_dlaf(char jobz__, char uplo__, int n__, T *a__, int ia__, int ja__,
+                  int *desca__, T *w__, T *z__, int iz__, int jz__,
+                  int *desc_z__, T *work__, int lwork__, int *iwork__,
+                  int liwork__, int &info__) {
   // if (uplo__ != 'U' && uplo__ != 'u' && uplo__ != 'L' && uplo__ != 'l') {
   //   std::cerr << "DLAF Eigensolver: The UpLo parameter has a incorrect value.
   //   "; std::cerr << "Please check the scalapack documentation.\n"; info__ =
@@ -236,17 +236,16 @@ void pxsyevd_dlaf(char jobz__, char uplo__, int n__, T *a__, int ia__,
     info__ = -1;
   }
 
-// TODO: Remove
-//  single_threaded_omp sto{};
+  // TODO: Remove
+  //  single_threaded_omp sto{};
 
   pika::resume();
-
 
   // TODO: Remove
   int rank = 0;
   MPI_Comm comm = get_communicator(desca__[1]);
   MPI_Comm_rank(comm, &rank);
-  
+
   auto [distribution, layout, comm_grid] = dlaf_setup(desca__);
 
   // DLAF matrix, manages the correct dependencies of taks involving tiles
@@ -283,7 +282,7 @@ void pxsyevd_dlaf(char jobz__, char uplo__, int n__, T *a__, int ia__,
         comm_grid, blas::Uplo::Lower, matrix.get(), eigenvalues.get(),
         eigenvectors.get());
   } // Destroy mirrors
-  
+
   eigenvalues_cp2k.waitLocalTiles();
 
   // TODO: Remove
@@ -300,8 +299,8 @@ extern "C" void pdsyevd_dlaf(char *jobz__, char *uplo__, int n__, double *a__,
                              double *work__, int lwork__, int *iwork__,
                              int liwork__, int *info__) {
   pxsyevd_dlaf<double>(*jobz__, *uplo__, n__, a__, ia__, ja__, desca__, w__,
-                           z__, iz__, jz__, desc_z__, work__, lwork__, iwork__,
-                           liwork__, *info__);
+                       z__, iz__, jz__, desc_z__, work__, lwork__, iwork__,
+                       liwork__, *info__);
 }
 
 extern "C" void pssyevd_dlaf(char *jobz__, char *uplo__, int n__, float *a__,
@@ -309,7 +308,7 @@ extern "C" void pssyevd_dlaf(char *jobz__, char *uplo__, int n__, float *a__,
                              float *z__, int iz__, int jz__, int *desc_z__,
                              float *work__, int lwork__, int *iwork__,
                              int liwork__, int *info__) {
-  pxsyevd_dlaf<float>(*jobz__, *uplo__, n__, a__, ia__, ja__, desca__, w__,
-                           z__, iz__, jz__, desc_z__, work__, lwork__, iwork__,
-                           liwork__, *info__);
+  pxsyevd_dlaf<float>(*jobz__, *uplo__, n__, a__, ia__, ja__, desca__, w__, z__,
+                      iz__, jz__, desc_z__, work__, lwork__, iwork__, liwork__,
+                      *info__);
 }
