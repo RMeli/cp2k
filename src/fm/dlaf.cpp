@@ -143,29 +143,35 @@ dlaf_setup(int *desca__) {
   return std::make_tuple(distribution, layout, comm_grid);
 }
 
-template <typename T>
-void pxpotrf_dlaf(char uplo__, int n__, T *a__, int ia__, int ja__,
-                  int *desca__, int &info__) {
-
-  if (uplo__ != 'U' && uplo__ != 'u' && uplo__ != 'L' && uplo__ != 'l') {
-    std::cerr << "DLA Cholesky : The UpLo parameter has a incorrect value. ";
-    std::cerr << "Please check the ScaLAPACK documentation.\n";
-    info__ = -1;
+void dlaf_check(char uplo, int *desca, int &info) {
+  // TODO: Figure out why this segfaults for the Eigensolver
+  if (uplo != 'U' && uplo != 'u' && uplo != 'L' && uplo != 'l') {
+    std::cerr << "ERROR: The UpLo parameter has a incorrect value: '" << uplo;
+    std::cerr << "'. Please check the ScaLAPACK documentation.\n";
+    info = -1;
     return;
   }
 
-  // need to extract this from the scalapack descriptor
-  if (desca__[0] != 1) {
-    // only treat dense matrices
-    info__ = -1;
-    std::cerr << "ERROR: DLA-Future should only treat dense matrices.\n";
+  if (desca[0] != 1) {
+    info = -1;
+    std::cerr << "ERROR: DLA-Future can only treat dense matrices.\n";
     return;
   }
 
   if (!dlaf_init_) {
-    std::cerr << "Error: DLA Future must be initialized.\n";
-    info__ = -1;
+    std::cerr << "Error: DLA-Future must be initialized.\n";
+    info = -1;
+    return;
   }
+}
+
+template <typename T>
+void pxpotrf_dlaf(char uplo__, int n__, T *a__, int ia__, int ja__,
+                  int *desca__, int &info__) {
+
+  dlaf_check(uplo__, desca__, info__);
+  if (info__ == -1)
+    return;
 
   // TODO: Remove
   //  single_threaded_omp sto{};
@@ -219,22 +225,9 @@ void pxsyevd_dlaf(char jobz__, char uplo__, int n__, T *a__, int ia__, int ja__,
                   int *desca__, T *w__, T *z__, int iz__, int jz__,
                   int *desc_z__, T *work__, int lwork__, int *iwork__,
                   int liwork__, int &info__) {
-  // if (uplo__ != 'U' && uplo__ != 'u' && uplo__ != 'L' && uplo__ != 'l') {
-  //   std::cerr << "DLAF Eigensolver: The UpLo parameter has a incorrect value.
-  //   "; std::cerr << "Please check the scalapack documentation.\n"; info__ =
-  //   -1; return;
-  // }
-
-  if (desca__[0] != 1) {
-    info__ = -1; // only treat dense matrices
-    std::cerr << "ERROR: DLA-Future should only threat dense matrices.\n";
+  dlaf_check(uplo__, desca__, info__);
+  if (info__ == -1)
     return;
-  }
-
-  if (!dlaf_init_) {
-    std::cout << "Error: DLA Future must be initialized\n";
-    info__ = -1;
-  }
 
   // TODO: Remove
   //  single_threaded_omp sto{};

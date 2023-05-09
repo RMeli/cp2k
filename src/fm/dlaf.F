@@ -92,8 +92,6 @@ CONTAINS
     INTEGER, DIMENSION(:), TARGET :: desca, descz
     REAL(KIND=dp), DIMENSION(:), TARGET :: w
     REAL(KIND=dp), DIMENSION(:, :), TARGET :: a, z
-    REAL(kind=dp), DIMENSION(:, :), POINTER :: aa, zz
-    real(kind=dp), dimension(:), allocatable :: printwork ! TODO: Remove
     INTERFACE
        SUBROUTINE pdsyevd_dlaf(JOBZ, UPLO, N, A, IA, JA, DESCA, W, Z, IZ, JZ, DESCZ, WORK, LWORK, IWORK, LIWORK, INFO) &
          BIND(C, name='pdsyevd_dlaf')
@@ -109,40 +107,12 @@ CONTAINS
 #if __GNUC__ >= 9
     CPASSERT(IS_CONTIGUOUS(A))
 #endif
-    ! The input matrix is 'U', needst to be transposed to 'L' for DLAF eigensolver
-    allocate(printwork(desca(5)*2))
-    ! call pdlaprnt(1, 1, a(1,1), 1, 30, desca(1), 0, 0, "A_EIGENSOLVER", 6, printwork)
-    ! call pdlaprnt(1, 1, a(1,1), 30, 1, desca(1), 0, 0, "A_EIGENSOLVER", 6, printwork)
-    ! call pdlaprnt(1, 1, z(1,1), 1, 30, descz(1), 0, 0, "Z_EIGENSOLVER", 6, printwork)
-    ! call pdlaprnt(1, 1, z(1,1), 30, 1, descz(1), 0, 0, "Z_EIGENSOLVER", 6, printwork)
-
-    ! allocate(aa(n, n), zz(n, n))
-    ! call pdtran(n, n, 1.0_dp, a, ia, ja, desca(1), 0.0_dp, aa, ia, ja, desca(1))
-    ! call pdtran(n, n, 1.0_dp, z, iz, jz, descz(1), 0.0_dp, zz, iz, jz, descz(1))
-
-    ! call pdlaprnt(1, 1, aa(1,1), 1, 30, desca(1), 0, 0, "AA_EIGENSOLVER", 6, printwork)
-    ! call pdlaprnt(1, 1, aa(1,1), 30, 1, desca(1), 0, 0, "AA_EIGENSOLVER", 6, printwork)
-    ! call pdlaprnt(1, 1, zz(1,1), 1, 30, descz(1), 0, 0, "ZZ_EIGENSOLVER", 6, printwork)
-    ! call pdlaprnt(1, 1, zz(1,1), 30, 1, descz(1), 0, 0, "ZZ_EIGENSOLVER", 6, printwork)
-    
     CALL pdsyevd_dlaf(&
         jobz, uplo, n, C_LOC(a(1,1)), ia, ja, C_LOC(desca(1)), &
         C_LOC(w(1)), C_LOC(z(1,1)), iz, jz, C_LOC(descz(1)), &
         C_LOC(work(1)), lwork, C_LOC(iwork(1)), liwork, &
         C_LOC(info) &
     )
- 
-    ! CALL pdsyevd_dlaf(&
-    !     jobz, uplo, n, C_LOC(aa(1,1)), ia, ja, C_LOC(desca(1)), &
-    !     C_LOC(w(1)), C_LOC(zz(1,1)), iz, jz, C_LOC(descz(1)), &
-    !     C_LOC(work(1)), lwork, C_LOC(iwork(1)), liwork, &
-    !     C_LOC(info) &
-    ! )
-
-    ! The output matrix is 'L', needs to be transposed to 'U' for CP2K
-    ! call pdtran(n, n, 1.0_dp, zz, iz, jz, descz(1), 0.0_dp, z, iz, jz, descz(1))
-    ! 
-    ! deallocate(aa, zz)
   END SUBROUTINE cp_pdsyevd_dlaf
 
 END MODULE dlaf
