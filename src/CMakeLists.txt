@@ -1354,7 +1354,7 @@ set(CP2K_PROGS_F
     nequip_unittest.F)
 
 if (CP2K_USE_DLAF)
-  list(APPEND CP2K_SRCS_C fm/cholesky_dlaf.cpp)
+  list(APPEND CP2K_SRCS_C fm/dlaf.cpp)
   list(APPEND CP2K_SRCS_F fm/dlaf.F)
 endif()
 
