@@ -295,13 +295,3 @@ extern "C" void pdsyevd_dlaf(char *jobz__, char *uplo__, int n__, double *a__,
                        z__, iz__, jz__, desc_z__, work__, lwork__, iwork__,
                        liwork__, *info__);
 }
-
-extern "C" void pssyevd_dlaf(char *jobz__, char *uplo__, int n__, float *a__,
-                             int ia__, int ja__, int *desca__, float *w__,
-                             float *z__, int iz__, int jz__, int *desc_z__,
-                             float *work__, int lwork__, int *iwork__,
-                             int liwork__, int *info__) {
-  pxsyevd_dlaf<float>(*jobz__, *uplo__, n__, a__, ia__, ja__, desca__, w__, z__,
-                      iz__, jz__, desc_z__, work__, lwork__, iwork__, liwork__,
-                      *info__);
-}
