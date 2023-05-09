@@ -33,8 +33,8 @@
 
 // TODO: Remove once https://github.com/eth-cscs/DLA-Future/pull/668 is
 // merged.
-#include <mkl_service.h>
-#include <omp.h>
+//#include <mkl_service.h>
+//#include <omp.h>
 
 static bool dlaf_init_ = false;
 
@@ -90,16 +90,17 @@ extern "C" void dlaf_finalize() {
   dlaf_init_ = false;
 }
 
-class single_threaded_omp {
-public:
-  single_threaded_omp() : old_threads(mkl_get_max_threads()) {
-    mkl_set_num_threads(1);
-  }
-  ~single_threaded_omp() { mkl_set_num_threads(old_threads); }
-
-private:
-  int old_threads;
-};
+// TODO: Remove
+// class single_threaded_omp {
+// public:
+//   single_threaded_omp() : old_threads(mkl_get_max_threads()) {
+//     mkl_set_num_threads(1);
+//   }
+//   ~single_threaded_omp() { mkl_set_num_threads(old_threads); }
+//
+// private:
+//   int old_threads:;
+// };
 
 template <typename T>
 void pxpotrf_dla(char uplo__, int n__, T *a__, int ia__, int ja__, int *desca__,
@@ -125,7 +126,8 @@ void pxpotrf_dla(char uplo__, int n__, T *a__, int ia__, int ja__, int *desca__,
     info__ = -1;
   }
 
-  single_threaded_omp sto{};
+// TODO: Remove
+//  single_threaded_omp sto{};
 
   pika::resume();
 
@@ -251,7 +253,8 @@ void pdsyevd_dlaf_cpp(char jobz__, char uplo__, int n__, T *a__, int ia__,
     info__ = -1;
   }
 
-  single_threaded_omp sto{};
+// TODO: Remove
+//  single_threaded_omp sto{};
 
   pika::resume();
 
