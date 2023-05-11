@@ -31,10 +31,14 @@
 #include <pika/program_options.hpp>
 #include <pika/runtime.hpp>
 
-// TODO: Remove once https://github.com/eth-cscs/DLA-Future/pull/668 is
-// merged.
-// #include <mkl_service.h>
-// #include <omp.h>
+// TODO:
+// DONE - dlaf initialization
+// DONE - matrix mirror
+// DONE - resume suspend pika runtime
+// DONE - general cleanup
+// DONE - fortran interface uplo
+//      - cblcs call
+// DONE - remove omp/mkl_set_num_threads calls (will be handled by DLAF)
 
 static bool dlaf_init_ = false;
 
@@ -90,18 +94,6 @@ extern "C" void dlaf_finalize() {
   dlaf_init_ = false;
 }
 
-// TODO: Remove
-// class single_threaded_omp {
-// public:
-//   single_threaded_omp() : old_threads(mkl_get_max_threads()) {
-//     mkl_set_num_threads(1);
-//   }
-//   ~single_threaded_omp() { mkl_set_num_threads(old_threads); }
-//
-// private:
-//   int old_threads:;
-// };
-
 std::tuple<dlaf::matrix::Distribution, dlaf::matrix::LayoutInfo,
            dlaf::comm::CommunicatorGrid>
 dlaf_setup(int *desca__) {
@@ -144,7 +136,6 @@ dlaf_setup(int *desca__) {
 }
 
 void dlaf_check(char uplo, int *desca, int &info) {
-  // TODO: Figure out why this segfaults for the Eigensolver
   if (uplo != 'U' && uplo != 'u' && uplo != 'L' && uplo != 'l') {
     std::cerr << "ERROR: The UpLo parameter has a incorrect value: '" << uplo;
     std::cerr << "'. Please check the ScaLAPACK documentation.\n";
@@ -173,21 +164,16 @@ void pxpotrf_dlaf(char uplo__, int n__, T *a__, int ia__, int ja__,
   if (info__ == -1)
     return;
 
-  // TODO: Remove
-  //  single_threaded_omp sto{};
-
   pika::resume();
 
-  // TODO:
-  // DONE - dlaf initialization
-  // DONE - matrix mirror
-  // DONE - resume suspend pika runtime
-  //      - general cleanup
-  // DONE - fortran interface uplo
-  //      - cblcs call
-  // DONE - remove omp/mkl_set_num_threads calls (will be handled by DLAF)
-
   auto [distribution, layout, comm_grid] = dlaf_setup(desca__);
+
+  // TODO: Remove
+  int rank = 0;
+  MPI_Comm comm = get_communicator(desca__[1]);
+  MPI_Comm_rank(comm, &rank);
+  if (rank == 0)
+    std::cerr << "Calling DLAF Cholesky decomposition... ";
 
   dlaf::matrix::Matrix<T, dlaf::Device::CPU> mat(std::move(distribution),
                                                  layout, a__);
@@ -205,6 +191,10 @@ void pxpotrf_dlaf(char uplo__, int n__, T *a__, int ia__, int ja__,
   } // Destroy MatrixMirror; copy results back to Device::CPU
 
   mat.waitLocalTiles();
+
+  // TODO: Remove
+  if (rank == 0)
+    std::cerr << "DLAF Cholesky decomposition terminated successfully!\n";
 
   pika::suspend();
   info__ = 0;
@@ -229,15 +219,7 @@ void pxsyevd_dlaf(char jobz__, char uplo__, int n__, T *a__, int ia__, int ja__,
   if (info__ == -1)
     return;
 
-  // TODO: Remove
-  //  single_threaded_omp sto{};
-
   pika::resume();
-
-  // TODO: Remove
-  int rank = 0;
-  MPI_Comm comm = get_communicator(desca__[1]);
-  MPI_Comm_rank(comm, &rank);
 
   auto [distribution, layout, comm_grid] = dlaf_setup(desca__);
 
@@ -250,8 +232,11 @@ void pxsyevd_dlaf(char jobz__, char uplo__, int n__, T *a__, int ia__, int ja__,
       uplo__ == 'U' or uplo__ == 'u' ? blas::Uplo::Upper : blas::Uplo::Lower;
 
   // TODO: Remove
+  int rank = 0;
+  MPI_Comm comm = get_communicator(desca__[1]);
+  MPI_Comm_rank(comm, &rank);
   if (rank == 0)
-    std::cerr << "Calling DLAF eigensolver..." << std::endl;
+    std::cerr << "Calling DLAF eigensolver... ";
 
   // Create DLAF matrices from CP2K-allocated ones
   dlaf::matrix::Matrix<T, dlaf::Device::CPU> eigenvectors_cp2k(
@@ -280,7 +265,7 @@ void pxsyevd_dlaf(char jobz__, char uplo__, int n__, T *a__, int ia__, int ja__,
 
   // TODO: Remove
   if (rank == 0)
-    std::cerr << "DLAF eigensolver terminated successfully!" << std::endl;
+    std::cerr << "DLAF eigensolver terminated successfully!\n";
 
   pika::suspend();
   info__ = 0;
