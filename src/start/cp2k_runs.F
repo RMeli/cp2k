@@ -130,7 +130,7 @@ MODULE cp2k_runs
    USE sirius_interface,                ONLY: cp_sirius_finalize,&
                                               cp_sirius_init
 #ifdef __DLAF
-   USE dlaf,                            ONLY: cp_dlaf_init, cp_dlaf_finalize
+   USE cp_fm_dlaf_api,                  ONLY: cp_dlaf_init, cp_dlaf_finalize
 #endif
    USE string_utilities,                ONLY: html_entity_table,&
                                               write_html_tables

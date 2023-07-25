@@ -37,7 +37,7 @@ MODULE cp2k_info
    CHARACTER(LEN=*), PARAMETER :: compile_revision = "unknown"
 #endif
 
-   CHARACTER(LEN=*), PARAMETER :: cp2k_version = "CP2K version 2023.1 (Development Version)"
+   CHARACTER(LEN=*), PARAMETER :: cp2k_version = "CP2K version 2023.2 (Development Version)"
    CHARACTER(LEN=*), PARAMETER :: cp2k_year = "2023"
    CHARACTER(LEN=*), PARAMETER :: cp2k_home = "https://www.cp2k.org/"
 
@@ -237,6 +237,14 @@ CONTAINS
 
 #if defined(__SPLA) && defined(__OFFLOAD_GEMM)
       flags = TRIM(flags)//" spla_gemm_offloading"
+#endif
+
+#if defined(__CUSOLVERMP)
+      flags = TRIM(flags)//" cusolvermp"
+#endif
+
+#if defined(__DLAF)
+      flags = TRIM(flags)//" dlaf"
 #endif
 
 #if defined(__LIBVDWXC)

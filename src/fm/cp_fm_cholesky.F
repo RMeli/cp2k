@@ -18,7 +18,7 @@ MODULE cp_fm_cholesky
    USE kinds,                           ONLY: dp,&
                                               sp
 #ifdef __DLAF
-   USE dlaf,                            ONLY: cp_pdpotrf_dlaf, cp_pspotrf_dlaf
+   USE cp_fm_dlaf_api,                  ONLY: cp_pdpotrf_dlaf, cp_pspotrf_dlaf
 #endif
 #include "../base/base_uses.f90"
 
