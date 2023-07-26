@@ -8,6 +8,8 @@
 // SPDX-License-Identifier: BSD-3-Clause
 //
 
+#if defined(__DLAF)
+
 #include <dlaf/init.h>
 #include <pika/execution.hpp>
 #include <pika/init.hpp>
@@ -36,3 +38,5 @@ extern "C" void dlaf_init() {
     pika::suspend();
   }
 }
+
+#endif // __DLAF
