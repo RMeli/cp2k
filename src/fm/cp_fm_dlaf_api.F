@@ -22,57 +22,20 @@ MODULE cp_fm_dlaf_api
    CHARACTER(len=*), PARAMETER, PRIVATE :: moduleN = 'cp_fm_dlaf_api'
 
 #if defined(__DLAF)
-   PUBLIC :: cp_dlaf_init, cp_dlaf_finalize
    PUBLIC :: cp_pdpotrf_dlaf, cp_pspotrf_dlaf
 #endif
    PUBLIC :: cp_fm_diag_dlaf
 
 CONTAINS
-      
+
 #if defined(__DLAF)
-   SUBROUTINE cp_dlaf_init()
-      INTERFACE
-         SUBROUTINE dlaf_init_aux() &
-            BIND(C, name='dlaf_init')
-         end SUBROUTINE dlaf_init_aux
-      end INTERFACE
 
-      call dlaf_init_aux()
-   end SUBROUTINE cp_dlaf_init
-
-   SUBROUTINE cp_dlaf_finalize()
-      INTERFACE
-         SUBROUTINE dlaf_finalize_aux() &
-            BIND(C, name='dlaf_finalize')
-         end SUBROUTINE dlaf_finalize_aux
-      END INTERFACE
-      CALL dlaf_finalize_aux()
-   END SUBROUTINE cp_dlaf_finalize
-
-   SUBROUTINE cp_dlaf_create_grid(blacs_context)
-      INTEGER, INTENT(IN) :: blacs_context
-      INTERFACE
-         SUBROUTINE dlaf_create_grid(blacs_contxt) &
-            BIND(C, name='dlaf_create_grid_from_blacs')
-            IMPORT :: C_INT
-            INTEGER(KIND=C_INT), VALUE :: blacs_contxt
-         END SUBROUTINE
-      END INTERFACE
-      CALL dlaf_create_grid(blacs_context)
-   END SUBROUTINE cp_dlaf_create_grid
-
-   SUBROUTINE cp_dlaf_free_grid(blacs_context)
-      INTEGER, INTENT(IN) :: blacs_context
-      INTERFACE
-         SUBROUTINE dlaf_free_grid(blacs_contxt) &
-            BIND(C, name='dlaf_free_grid')
-            IMPORT :: C_INT
-            INTEGER(KIND=C_INT), VALUE :: blacs_contxt
-         END SUBROUTINE
-      END INTERFACE
-      CALL dlaf_free_grid(blacs_context)
-   end SUBROUTINE cp_dlaf_free_grid
-
+!***************************************************************************************************
+!> \brief Cholesky factorization using DLA-Future
+!> \author Rocco Meli
+!> \author Mikeal Simberg
+!> \author Mathieu Taillefumier
+!***************************************************************************************************
    SUBROUTINE cp_pdpotrf_dlaf(uplo, n, a, ia, ja, desca, info)
       CHARACTER, INTENT(IN) ::           uplo
       INTEGER, INTENT(IN)       ::       ia, ja, n
@@ -102,11 +65,17 @@ CONTAINS
       ! TODO: Figure out what's going on
       myuplo = uplo
 
-      CALL cp_dlaf_create_grid(desca(2))
+ !     CALL cp_dlaf_create_grid(desca(2))
       CALL pdpotrf_dlaf(myuplo, N, C_LOC(A(1, 1)), IA, JA, DESCA, C_LOC(INFO))
-      CALL cp_dlaf_free_grid(desca(2))
+ !     CALL cp_dlaf_free_grid(desca(2))
    END SUBROUTINE cp_pdpotrf_dlaf
 
+!***************************************************************************************************
+!> \brief Cholesky factorization using DLA-Future
+!> \author Rocco Meli
+!> \author Mikeal Simberg
+!> \author Mathieu Taillefumier
+!***************************************************************************************************
    SUBROUTINE cp_pspotrf_dlaf(UPLO, N, A, IA, JA, DESCA, INFO)
       CHARACTER, INTENT(IN) ::           UPLO
       INTEGER, INTENT(IN)       ::       IA, JA, N
@@ -131,13 +100,17 @@ CONTAINS
       ! TODO: Figure out what's going on
       myuplo = uplo
 
-      CALL cp_dlaf_create_grid(desca(2))
+!     CALL cp_dlaf_create_grid(desca(2))
       CALL pspotrf_dlaf(myuplo, N, C_LOC(A(1, 1)), IA, JA, DESCA, C_LOC(INFO))
-      CALL cp_dlaf_free_grid(desca(2))
+!     CALL cp_dlaf_free_grid(desca(2))
    END SUBROUTINE cp_pspotrf_dlaf
 
 #endif
 
+!***************************************************************************************************
+!> \brief DLA-Future eigensolver
+!> \author Rocco Meli
+!***************************************************************************************************
    SUBROUTINE cp_fm_diag_dlaf(matrix, eigenvectors, eigenvalues, info)
       TYPE(cp_fm_type), INTENT(IN) :: matrix
       TYPE(cp_fm_type), INTENT(IN) :: eigenvectors
@@ -172,7 +145,7 @@ CONTAINS
       ! The passed eigenvalues array might be smaller than n
       ALLOCATE (eigenvalues_buffer(n))
 
-      CALL cp_dlaf_create_grid(blacs_context)
+!      CALL cp_dlaf_create_grid(blacs_context)
 
       ! TODO: Upper
       CALL pdsyevd_dlaf( &
@@ -184,7 +157,7 @@ CONTAINS
          info=C_LOC(info) &
          )
 
-      CALL cp_dlaf_free_grid(blacs_context)
+ !     CALL cp_dlaf_free_grid(blacs_context)
 
       nmo = SIZE(eigenvalues)
       eigenvalues(1:nmo) = eigenvalues_buffer(1:nmo)

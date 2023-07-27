@@ -129,9 +129,7 @@ MODULE cp2k_runs
    USE rt_propagation,                  ONLY: rt_prop_setup
    USE sirius_interface,                ONLY: cp_sirius_finalize,&
                                               cp_sirius_init
-#ifdef __DLAF
-   USE cp_fm_dlaf_api,                  ONLY: cp_dlaf_init, cp_dlaf_finalize
-#endif
+   USE cp_dlaf_utils,                   ONLY: cp_dlaf_initialize, cp_dlaf_finalize
    USE string_utilities,                ONLY: html_entity_table,&
                                               write_html_tables
    USE swarm,                           ONLY: run_swarm
@@ -215,9 +213,8 @@ CONTAINS
       CALL pw_gpu_init()
       CALL pw_fpga_init()
 
-#ifdef __DLAF
-      CALL cp_dlaf_init()
-#endif
+      CALL cp_dlaf_initialize()
+
       NULLIFY (globenv, force_env)
 
       CALL cite_reference(Hutter2014)
