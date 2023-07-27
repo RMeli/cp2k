@@ -951,6 +951,7 @@ list(
   fm/cp_fm_basic_linalg.F
   fm/cp_fm_cholesky.F
   fm/cp_fm_cusolver_api.F
+  fm/cp_fm_dlaf_api.F
   fm/cp_fm_diag.F
   fm/cp_fm_diag_utils.F
   fm/cp_fm_elpa.F
@@ -959,7 +960,7 @@ list(
   fm/cp_fm_struct.F
   fm/cp_linked_list_fm.F)
 
-list(APPEND CP2K_SRCS_C fm/cp_fm_cusolver.c)
+list(APPEND CP2K_SRCS_C fm/cp_fm_cusolver.c fm/cp_fm_dlaf.c)
 
 list(APPEND CP2K_SRCS_F hfxbase/hfx_compression_core_methods.F
      hfxbase/hfx_contract_block.F hfxbase/hfx_contraction_methods.F)
@@ -1367,10 +1368,6 @@ set(CP2K_PROGS_F
     motion/xyz2dcd.F
     nequip_unittest.F)
 
-if (CP2K_USE_DLAF)
-  list(APPEND CP2K_SRCS_C fm/dlaf.cpp)
-  list(APPEND CP2K_SRCS_F fm/cp_fm_dlaf_api.F)
-endif()
 
 if(CP2K_USE_CUDA OR CP2K_USE_HIP)
   if(NOT CP2K_DISABLE_PW_GPU)

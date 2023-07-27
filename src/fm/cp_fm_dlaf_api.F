@@ -21,13 +21,15 @@ MODULE cp_fm_dlaf_api
 
    CHARACTER(len=*), PARAMETER, PRIVATE :: moduleN = 'cp_fm_dlaf_api'
 
+#if defined(__DLAF)
    PUBLIC :: cp_dlaf_init, cp_dlaf_finalize
    PUBLIC :: cp_pdpotrf_dlaf, cp_pspotrf_dlaf
-   !PUBLIC :: cp_pdsyevd_dlaf
+#endif
    PUBLIC :: cp_fm_diag_dlaf
 
 CONTAINS
-
+      
+#if defined(__DLAF)
    SUBROUTINE cp_dlaf_init()
       INTERFACE
          SUBROUTINE dlaf_init_aux() &
@@ -134,6 +136,8 @@ CONTAINS
       CALL cp_dlaf_free_grid(desca(2))
    END SUBROUTINE cp_pspotrf_dlaf
 
+#endif
+
    SUBROUTINE cp_fm_diag_dlaf(matrix, eigenvectors, eigenvalues, info)
       TYPE(cp_fm_type), INTENT(IN) :: matrix
       TYPE(cp_fm_type), INTENT(IN) :: eigenvectors
@@ -188,12 +192,11 @@ CONTAINS
 #else
       MARK_USED(matrix)
       MARK_USED(eigenvectors)
-      MARK_USED(eigenvvalues)
-      MARK_USED(eigenvvalues_buffer)
+      MARK_USED(eigenvalues)
+      MARK_USED(eigenvalues_buffer)
       MARK_USED(n)
       MARK_USED(nmo)
       MARK_USED(info)
-      MARK_USED(context)
       CPABORT("CP2K compiled without DLAF library.")
 #endif
 
