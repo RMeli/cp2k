@@ -65,9 +65,7 @@ CONTAINS
       ! TODO: Figure out what's going on
       myuplo = uplo
 
- !     CALL cp_dlaf_create_grid(desca(2))
       CALL pdpotrf_dlaf(myuplo, N, C_LOC(A(1, 1)), IA, JA, DESCA, C_LOC(INFO))
- !     CALL cp_dlaf_free_grid(desca(2))
    END SUBROUTINE cp_pdpotrf_dlaf
 
 !***************************************************************************************************
@@ -100,9 +98,7 @@ CONTAINS
       ! TODO: Figure out what's going on
       myuplo = uplo
 
-!     CALL cp_dlaf_create_grid(desca(2))
       CALL pspotrf_dlaf(myuplo, N, C_LOC(A(1, 1)), IA, JA, DESCA, C_LOC(INFO))
-!     CALL cp_dlaf_free_grid(desca(2))
    END SUBROUTINE cp_pspotrf_dlaf
 
 #endif
@@ -145,8 +141,6 @@ CONTAINS
       ! The passed eigenvalues array might be smaller than n
       ALLOCATE (eigenvalues_buffer(n))
 
-!      CALL cp_dlaf_create_grid(blacs_context)
-
       ! TODO: Upper
       CALL pdsyevd_dlaf( &
          uplo="L", &
@@ -156,8 +150,6 @@ CONTAINS
          z=eigenvectors%local_data, iz=1, jz=1, descz=eigenvectors%matrix_struct%descriptor, &
          info=C_LOC(info) &
          )
-
- !     CALL cp_dlaf_free_grid(blacs_context)
 
       nmo = SIZE(eigenvalues)
       eigenvalues(1:nmo) = eigenvalues_buffer(1:nmo)
