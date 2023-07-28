@@ -139,7 +139,7 @@ CONTAINS
       blacs_context = matrix%matrix_struct%descriptor(2)
 
       ! The passed eigenvalues array might be smaller than n
-      ALLOCATE (eigenvalues_buffer(n))
+      ALLOCATE (eigenvalues_buffer(n), source=0.0_dp)
 
       ! TODO: Upper
       CALL pdsyevd_dlaf( &
