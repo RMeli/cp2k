@@ -77,7 +77,7 @@ CONTAINS
       CALL blacs_gridinit(context_handle, order, nprow, npcol)
       this%context_handle = context_handle
 
-      CALL cp_dlaf_create_grid(this%context_handle)
+      CALL cp_dlaf_create_grid(context_handle)
 #else
       MARK_USED(this)
       MARK_USED(comm)

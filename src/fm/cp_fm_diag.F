@@ -221,7 +221,7 @@ CONTAINS
          END IF
       
       ELSE IF (diag_type == FM_DIAG_TYPE_DLAF) THEN
-         CALL cp_fm_diag_dlaf(matrix, eigenvectors, eigenvalues, info)
+         CALL cp_fm_diag_dlaf(matrix, eigenvectors, eigenvalues)
       ELSE
          CPABORT("ERROR in "//routineN//": Invalid diagonalization type requested")
       END IF

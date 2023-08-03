@@ -11,6 +11,7 @@ MODULE cp_fm_dlaf_api
 
    USE cp_blacs_env, ONLY: cp_blacs_env_type
    USE cp_fm_types, ONLY: cp_fm_type
+   USE cp_fm_basic_linalg, ONLY: cp_fm_upper_to_full
    USE kinds, ONLY: dp
 
 #include "../base/base_uses.f90"
@@ -107,15 +108,15 @@ CONTAINS
 !> \brief DLA-Future eigensolver
 !> \author Rocco Meli
 !***************************************************************************************************
-   SUBROUTINE cp_fm_diag_dlaf(matrix, eigenvectors, eigenvalues, info)
+   SUBROUTINE cp_fm_diag_dlaf(matrix, eigenvectors, eigenvalues)
       TYPE(cp_fm_type), INTENT(IN) :: matrix
       TYPE(cp_fm_type), INTENT(IN) :: eigenvectors
       REAL(kind=dp), DIMENSION(:), INTENT(OUT) :: eigenvalues
-      INTEGER, TARGET :: info
 
       REAL(kind=dp), DIMENSION(:), ALLOCATABLE :: eigenvalues_buffer
 
       INTEGER :: handle, n, nmo, blacs_context
+      INTEGER, TARGET :: info
 
       CHARACTER(len=*), PARAMETER :: routineN = 'cp_fm_diag_dlaf'
 
@@ -140,8 +141,11 @@ CONTAINS
 
       ! The passed eigenvalues array might be smaller than n
       ALLOCATE (eigenvalues_buffer(n), source=0.0_dp)
+      
+      ! DLAF needs the lower triangular part
+      ! Use eigenvectors matrix as workspace
+      CALL cp_fm_upper_to_full(matrix, eigenvectors)
 
-      ! TODO: Upper
       CALL pdsyevd_dlaf( &
          uplo="L", &
          n=n, &
@@ -153,6 +157,8 @@ CONTAINS
 
       nmo = SIZE(eigenvalues)
       eigenvalues(1:nmo) = eigenvalues_buffer(1:nmo)
+      
+      DEALLOCATE(eigenvalues_buffer)
 
 #else
       MARK_USED(matrix)
