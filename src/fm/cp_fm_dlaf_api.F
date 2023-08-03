@@ -87,10 +87,10 @@ CONTAINS
             BIND(C, name='dlaf_pspotrf')
             IMPORT :: C_PTR, C_INT, C_DOUBLE, C_CHAR
             CHARACTER(KIND=C_CHAR), VALUE :: UPLO
-            INTEGER(KIND=C_INT), value      ::        IA, JA, N
-            TYPE(C_PTR), value    ::       INFO
+            INTEGER(KIND=C_INT), VALUE      ::        IA, JA, N
+            TYPE(C_PTR), VALUE    ::       INFO
             INTEGER(kind=C_INT), DIMENSION(*)         :: DESCA
-            TYPE(C_PTR), value   ::              A
+            TYPE(C_PTR), VALUE   ::              A
          END SUBROUTINE pspotrf_dlaf
       END INTERFACE
 
