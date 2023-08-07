@@ -9,6 +9,7 @@ MODULE cp_fm_dlaf_api
 
    USE, INTRINSIC :: ISO_C_BINDING, ONLY: C_PTR, C_INT, C_DOUBLE, C_CHAR, C_FLOAT, C_LOC
 
+   USE cp_fm_diag_utils, ONLY: cp_fm_redistribute_start, cp_fm_redistribute_end
    USE cp_blacs_env, ONLY: cp_blacs_env_type
    USE cp_fm_types, ONLY: cp_fm_type
    USE cp_fm_basic_linalg, ONLY: cp_fm_upper_to_full
@@ -103,33 +104,76 @@ CONTAINS
    END SUBROUTINE cp_pspotrf_dlaf
 
 #endif
+   
+   SUBROUTINE cp_fm_diag_dlaf(matrix, eigenvectors, eigenvalues)
+
+      TYPE(cp_fm_type), INTENT(IN)  :: matrix, eigenvectors
+      REAL(KIND=dp), DIMENSION(:), INTENT(OUT) :: eigenvalues
+
+      CHARACTER(LEN=*), PARAMETER              :: routineN = 'cp_fm_syevd'
+
+      INTEGER                                  :: handle, n, nmo
+      REAL(KIND=dp), ALLOCATABLE, DIMENSION(:), TARGET :: eig
+      TYPE(cp_fm_type)                         :: eigenvectors_new, matrix_new
+      REAL(KIND=dp), DIMENSION(:, :), POINTER  :: m
+
+      CALL timeset(routineN, handle)
+
+      n = matrix%matrix_struct%nrow_global
+      ALLOCATE (eig(n))
+
+      CALL cp_fm_redistribute_start(matrix, eigenvectors, matrix_new, eigenvectors_new)
+
+      ! Call scalapack on CPUs that hold the new matrix
+      IF (ASSOCIATED(matrix_new%matrix_struct)) THEN
+            CALL cp_fm_diag_dlaf_base(matrix_new, eigenvectors_new, eig)
+      END IF
+
+      CALL cp_fm_redistribute_end(matrix, eigenvectors, eig, matrix_new, eigenvectors_new)
+
+      nmo = SIZE(eigenvalues, 1)
+      IF (nmo > n) THEN
+         eigenvalues(1:n) = eig(1:n)
+      ELSE
+         eigenvalues(1:nmo) = eig(1:nmo)
+      END IF
+
+      DEALLOCATE (eig)
+
+!      CALL check_diag(matrix, eigenvectors, n)
+
+      CALL timestop(handle)
+
+   END SUBROUTINE cp_fm_diag_dlaf
 
 !***************************************************************************************************
 !> \brief DLA-Future eigensolver
 !> \author Rocco Meli
 !***************************************************************************************************
-   SUBROUTINE cp_fm_diag_dlaf(matrix, eigenvectors, eigenvalues)
+   SUBROUTINE cp_fm_diag_dlaf_base(matrix, eigenvectors, eigenvalues)
       TYPE(cp_fm_type), INTENT(IN) :: matrix
       TYPE(cp_fm_type), INTENT(IN) :: eigenvectors
-      REAL(kind=dp), DIMENSION(:), INTENT(OUT) :: eigenvalues
+      REAL(kind=dp), DIMENSION(:), INTENT(OUT), TARGET :: eigenvalues
 
-      REAL(kind=dp), DIMENSION(:), ALLOCATABLE :: eigenvalues_buffer
-
-      INTEGER :: handle, n, nmo, blacs_context
+      INTEGER :: handle, n, nmo
       INTEGER, TARGET :: info
 
-      CHARACTER(len=*), PARAMETER :: routineN = 'cp_fm_diag_dlaf'
+      INTEGER, DIMENSION(9)                    :: desca, descz
+      REAL(KIND=dp), DIMENSION(:, :), POINTER  :: a, z
+
+      CHARACTER(len=*), PARAMETER :: routineN = 'cp_fm_diag_dlaf_base'
+      CHARACTER(LEN=100)   :: message
 
       INTERFACE
-         SUBROUTINE pdsyevd_dlaf(uplo, n, a, ia, ja, desca, w, z, iz, jz, descz, info) &
-            BIND(C, name='dlaf_pdsyevd')
+         SUBROUTINE pdsyevd_dlaf(n, a, ia, ja, desca, w, z, iz, jz, descz, info) &
+            BIND(C, name='dlaf_pdsyevd_wrapper')
 
             IMPORT :: C_INT, C_DOUBLE, C_CHAR, C_PTR
-            CHARACTER(kind=C_CHAR), VALUE :: uplo
+
             INTEGER(kind=C_INT), VALUE :: n, ia, ja, iz, jz
-            REAL(kind=C_DOUBLE), DIMENSION(*) :: a, w, z
-            INTEGER(kind=C_INT), DIMENSION(*) :: desca, descz
-            TYPE(C_PTR) :: info
+            TYPE(C_PTR), VALUE :: a, w, z
+            INTEGER(kind=C_INT), DIMENSION(9) :: desca, descz
+            TYPE(C_PTR), VALUE :: info
          END SUBROUTINE pdsyevd_dlaf
       END INTERFACE
 
@@ -137,34 +181,35 @@ CONTAINS
 
 #if defined(__DLAF)
       n = matrix%matrix_struct%nrow_global
-      blacs_context = matrix%matrix_struct%descriptor(2)
-
-      ! The passed eigenvalues array might be smaller than n
-      ALLOCATE (eigenvalues_buffer(n), source=0.0_dp)
       
       ! DLAF needs the lower triangular part
       ! Use eigenvectors matrix as workspace
       CALL cp_fm_upper_to_full(matrix, eigenvectors)
 
+      a => matrix%local_data
+      z => eigenvectors%local_data
+
+      desca(:) = matrix%matrix_struct%descriptor(:)
+      descz(:) = eigenvectors%matrix_struct%descriptor(:)
+
+      info = -1
+
       CALL pdsyevd_dlaf( &
-         uplo="L", &
          n=n, &
-         a=matrix%local_data, ia=1, ja=1, desca=matrix%matrix_struct%descriptor, &
-         w=eigenvalues_buffer, &
-         z=eigenvectors%local_data, iz=1, jz=1, descz=eigenvectors%matrix_struct%descriptor, &
+         a=C_LOC(a(1,1)), ia=1, ja=1, desca=desca, &
+         w=C_LOC(eigenvalues(1)), &
+         z=C_LOC(z(1,1)), iz=1, jz=1, descz=descz, &
          info=C_LOC(info) &
-         )
+      )
 
-      nmo = SIZE(eigenvalues)
-      eigenvalues(1:nmo) = eigenvalues_buffer(1:nmo)
-      
-      DEALLOCATE(eigenvalues_buffer)
-
+      IF (info /= 0) THEN
+         WRITE (message, "(A,I0,A)") "ERROR in DLAF_PDSYEVD: Eigensolver failed (INFO = ", info, ")"
+         CPABORT(TRIM(message))
+      END IF
 #else
       MARK_USED(matrix)
       MARK_USED(eigenvectors)
       MARK_USED(eigenvalues)
-      MARK_USED(eigenvalues_buffer)
       MARK_USED(n)
       MARK_USED(nmo)
       MARK_USED(info)
@@ -173,6 +218,6 @@ CONTAINS
 
       CALL timestop(handle)
 
-   END SUBROUTINE cp_fm_diag_dlaf
+   END SUBROUTINE cp_fm_diag_dlaf_base
 
 END MODULE cp_fm_dlaf_api
