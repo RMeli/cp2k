@@ -44,17 +44,16 @@ CONTAINS
       INTEGER, TARGET     ::      info
       INTEGER, dimension(9)       ::        DESCA
       REAL(KIND=dp), DIMENSION(:, :), TARGET   :: A
-      CHARACTER :: myuplo
 
       INTERFACE
          SUBROUTINE pdpotrf_dlaf(UPLO, N, A, IA, JA, DESCA, INFO) &
-            BIND(C, name='dlaf_pdpotrf')
-            IMPORT :: C_PTR, C_INT, C_DOUBLE, C_CHAR
-            CHARACTER(KIND=C_CHAR), VALUE :: UPLO
+            BIND(C, name='dlaf_pdpotrf_wrapper')
+            IMPORT :: C_PTR, C_INT, C_DOUBLE
+            INTEGER(KIND=C_INT), VALUE :: UPLO
             INTEGER(KIND=C_INT), VALUE      ::        IA, JA, N
-            TYPE(C_PTR), value ::       INFO
+            TYPE(C_PTR), VALUE ::       INFO
             INTEGER(kind=C_INT), DIMENSION(*)         :: DESCA
-            TYPE(C_PTR), value ::              A
+            TYPE(C_PTR), VALUE ::              A
          END SUBROUTINE pdpotrf_dlaf
       END INTERFACE
 
@@ -62,12 +61,11 @@ CONTAINS
       CPASSERT(IS_CONTIGUOUS(A))
 #endif
 
-      ! Passing CHARACTER, INTENT(IN) directly does not work, the
-      ! character is shifted by one
-      ! TODO: Figure out what's going on
-      myuplo = uplo
-
-      CALL pdpotrf_dlaf(myuplo, N, C_LOC(A(1, 1)), IA, JA, DESCA, C_LOC(INFO))
+      IF (uplo == "L") THEN
+         CALL pdpotrf_dlaf(0, N, C_LOC(A(1, 1)), IA, JA, DESCA, C_LOC(INFO))
+      ELSE IF (uplo == "U") THEN
+         CALL pdpotrf_dlaf(1, N, C_LOC(A(1, 1)), IA, JA, DESCA, C_LOC(INFO))
+      END IF
    END SUBROUTINE cp_pdpotrf_dlaf
 
 !***************************************************************************************************
@@ -82,12 +80,12 @@ CONTAINS
       INTEGER, TARGET     ::      INFO
       INTEGER, dimension(9)      ::        DESCA
       REAL, dimension(:, :), TARGET    ::              A
-      CHARACTER :: myuplo
+
       INTERFACE
          SUBROUTINE pspotrf_dlaf(UPLO, N, A, IA, JA, DESCA, INFO) &
             BIND(C, name='dlaf_pspotrf')
-            IMPORT :: C_PTR, C_INT, C_DOUBLE, C_CHAR
-            CHARACTER(KIND=C_CHAR), VALUE :: UPLO
+            IMPORT :: C_PTR, C_INT, C_DOUBLE
+            INTEGER(KIND=C_INT), VALUE :: UPLO
             INTEGER(KIND=C_INT), VALUE      ::        IA, JA, N
             TYPE(C_PTR), VALUE    ::       INFO
             INTEGER(kind=C_INT), DIMENSION(*)         :: DESCA
@@ -95,16 +93,15 @@ CONTAINS
          END SUBROUTINE pspotrf_dlaf
       END INTERFACE
 
-      ! Passing CHARACTER, INTENT(IN) directly does not work, the
-      ! character is shifted by one
-      ! TODO: Figure out what's going on
-      myuplo = uplo
-
-      CALL pspotrf_dlaf(myuplo, N, C_LOC(A(1, 1)), IA, JA, DESCA, C_LOC(INFO))
+      IF (uplo == "L") THEN
+         CALL pspotrf_dlaf(0, N, C_LOC(A(1, 1)), IA, JA, DESCA, C_LOC(INFO))
+      ELSE IF (uplo == "U") THEN
+         CALL pspotrf_dlaf(1, N, C_LOC(A(1, 1)), IA, JA, DESCA, C_LOC(INFO))
+      END IF
    END SUBROUTINE cp_pspotrf_dlaf
 
 #endif
-   
+
    SUBROUTINE cp_fm_diag_dlaf(matrix, eigenvectors, eigenvalues)
 
       TYPE(cp_fm_type), INTENT(IN)  :: matrix, eigenvectors
@@ -120,13 +117,13 @@ CONTAINS
       CALL timeset(routineN, handle)
 
       n = matrix%matrix_struct%nrow_global
-      ALLOCATE (eig(n))
+      ALLOCATE (eig(n), source=-42.0_dp)
 
       CALL cp_fm_redistribute_start(matrix, eigenvectors, matrix_new, eigenvectors_new)
 
       ! Call scalapack on CPUs that hold the new matrix
       IF (ASSOCIATED(matrix_new%matrix_struct)) THEN
-            CALL cp_fm_diag_dlaf_base(matrix_new, eigenvectors_new, eig)
+         CALL cp_fm_diag_dlaf_base(matrix_new, eigenvectors_new, eig)
       END IF
 
       CALL cp_fm_redistribute_end(matrix, eigenvectors, eig, matrix_new, eigenvectors_new)
@@ -181,10 +178,12 @@ CONTAINS
 
 #if defined(__DLAF)
       n = matrix%matrix_struct%nrow_global
-      
+
       ! DLAF needs the lower triangular part
       ! Use eigenvectors matrix as workspace
       CALL cp_fm_upper_to_full(matrix, eigenvectors)
+
+      eigenvectors%local_data(:, :) = -23.0_dp
 
       a => matrix%local_data
       z => eigenvectors%local_data
@@ -196,11 +195,11 @@ CONTAINS
 
       CALL pdsyevd_dlaf( &
          n=n, &
-         a=C_LOC(a(1,1)), ia=1, ja=1, desca=desca, &
+         a=C_LOC(a(1, 1)), ia=1, ja=1, desca=desca, &
          w=C_LOC(eigenvalues(1)), &
-         z=C_LOC(z(1,1)), iz=1, jz=1, descz=descz, &
+         z=C_LOC(z(1, 1)), iz=1, jz=1, descz=descz, &
          info=C_LOC(info) &
-      )
+         )
 
       IF (info /= 0) THEN
          WRITE (message, "(A,I0,A)") "ERROR in DLAF_PDSYEVD: Eigensolver failed (INFO = ", info, ")"
