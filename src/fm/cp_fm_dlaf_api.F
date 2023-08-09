@@ -83,7 +83,7 @@ CONTAINS
 
       INTERFACE
          SUBROUTINE pspotrf_dlaf(UPLO, N, A, IA, JA, DESCA, INFO) &
-            BIND(C, name='dlaf_pspotrf')
+            BIND(C, name='dlaf_pspotrf_wrapper')
             IMPORT :: C_PTR, C_INT, C_DOUBLE
             INTEGER(KIND=C_INT), VALUE :: UPLO
             INTEGER(KIND=C_INT), VALUE      ::        IA, JA, N
