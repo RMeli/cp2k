@@ -121,9 +121,9 @@ CONTAINS
 !> \param elpa_qr_unsafe logical that enables potentially unsafe ELPA options
 !> \param dlaf_neigvec_min_input ...
 !> \param eps_check_diag_input ...
-!> \author  MI 11.2013
 !> \par History
 !>      - Add support for DLA-Future (05.09.2023, RMeli)
+!> \author  MI 11.2013
 ! **************************************************************************************************
    SUBROUTINE diag_init(diag_lib, fallback_applied, elpa_kernel, elpa_neigvec_min_input, elpa_qr, &
                         elpa_print, elpa_qr_unsafe, dlaf_neigvec_min_input, eps_check_diag_input)
