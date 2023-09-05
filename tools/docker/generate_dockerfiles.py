@@ -32,6 +32,9 @@ def main() -> None:
         f.write(toolchain_full(mpi_mode="openmpi", with_gcc="install"))
         f.write(regtest("psmp"))
 
+    with OutputFile(f"Dockerfile.test_fedora-psmp", args.check) as f:
+        f.write(toolchain_full(base_image="fedora:38") + regtest("psmp"))
+
     with OutputFile(f"Dockerfile.test_intel-psmp", args.check) as f:
         f.write(toolchain_intel() + regtest("psmp", intel=True))
 
@@ -133,7 +136,7 @@ def regtest(
 ARG TESTOPTS="{testopts}"
 COPY ./tools/docker/scripts/test_regtest.sh ./
 RUN /bin/bash -o pipefail -c " \
-    TESTOPTS="${{TESTOPTS}}" \
+    TESTOPTS='${{TESTOPTS}}' \
     ./test_regtest.sh '{arch}' '{version}' |& tee report.log && \
     rm -rf regtesting"
 """
@@ -227,9 +230,8 @@ def manual() -> str:
         install_cp2k(version="psmp", arch="local", revision=True)
         + rf"""
 # Generate manual.
-COPY ./tools/manual ./tools/manual
-COPY ./tools/input_editing ./tools/input_editing
 COPY ./docs ./docs
+COPY ./tools/input_editing ./tools/input_editing
 COPY ./tools/docker/scripts/test_manual.sh .
 ARG ADD_EDIT_LINKS=yes
 RUN ./test_manual.sh "${{ADD_EDIT_LINKS}}" 2>&1 | tee report.log
@@ -324,7 +326,7 @@ def production(version: str, arch: str = "local", intel: bool = False) -> str:
 ARG TESTOPTS
 RUN /bin/bash -c " \
     source /opt/cp2k-toolchain/install/setup && \
-    ./tools/regtesting/do_regtest.py '{arch}' '{version}' --skipdir=UNIT/libcp2k_unittest "${{TESTOPTS}}" |& tee regtests.log && \
+    ./tools/regtesting/do_regtest.py '{arch}' '{version}' --skipdir=UNIT/libcp2k_unittest '${{TESTOPTS}}' |& tee regtests.log && \
     rm -rf regtesting"
 
 # Setup entry point for production.
@@ -369,12 +371,10 @@ def install_cp2k(
         input_lines.append(f"COPY ./arch/{arch}.{version} /opt/cp2k/arch/")
         run_lines.append(f"ln -s /opt/cp2k-toolchain /opt/cp2k/tools/toolchain")
 
-    run_lines.append("echo 'Compiling cp2k...'")
-    run_lines.append("source /opt/cp2k-toolchain/install/setup")
-
-    build_command = f"make -j ARCH={arch} VERSION={version}"
     if prod:
-        run_lines.append(build_command)
+        run_lines.append("echo 'Compiling cp2k...'")
+        run_lines.append("source /opt/cp2k-toolchain/install/setup")
+        run_lines.append(f"make -j ARCH={arch} VERSION={version}")
         run_lines.append(f"ln -sf ./cp2k.{version} ./exe/{arch}/cp2k")
         run_lines.append(f"ln -sf ./cp2k_shell.{version} ./exe/{arch}/cp2k_shell")
         run_lines.append(f"ln -sf ./graph.{version} ./exe/{arch}/graph")
@@ -382,14 +382,11 @@ def install_cp2k(
         run_lines.append(f"ln -sf ./xyz2dcd.{version} ./exe/{arch}/xyz2dcd")
         # Remove libcp2k_unittest to reduce image size.
         run_lines.append(f"rm -rf lib obj exe/{arch}/libcp2k_unittest.{version}")
-    else:
-        run_lines.append(f"( {build_command} &> /dev/null || true )")
-        run_lines.append(f"rm -rf lib obj")
 
-    # Ensure MPI is dynamically linked, which is needed e.g. for Shifter.
-    if version.startswith("p") and not intel:
-        binary = f"./exe/{arch}/cp2k.{version}"
-        run_lines.append(f"( [ ! -f {binary} ] || ldd {binary} | grep -q libmpi )")
+        # Ensure MPI is dynamically linked, which is needed e.g. for Shifter.
+        if version.startswith("p") and not intel:
+            binary = f"./exe/{arch}/cp2k.{version}"
+            run_lines.append(f"( [ ! -f {binary} ] || ldd {binary} | grep -q libmpi )")
 
     input_block = "\n".join(input_lines)
     run_block = " && \\\n    ".join(run_lines)
@@ -488,7 +485,7 @@ RUN ln -sf /usr/bin/gcc-{gcc_version}      /usr/local/bin/gcc  && \
 # ======================================================================================
 def toolchain_intel() -> str:
     return rf"""
-FROM intel/oneapi-hpckit:2023.0.0-devel-ubuntu22.04
+FROM intel/oneapi-hpckit:2023.2.1-devel-ubuntu22.04
 
 """ + install_toolchain(
         base_image="ubuntu",
