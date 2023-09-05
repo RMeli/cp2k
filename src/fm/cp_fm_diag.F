@@ -72,6 +72,9 @@ MODULE cp_fm_diag
    ! Minimum number of eigenvectors for the use of the ELPA eigensolver.
    ! The ScaLAPACK eigensolver is used as fallback for all smaller cases.
    INTEGER, SAVE       :: elpa_neigvec_min = 0
+   ! Minimum number of eigenvectors for the use of the DLAF eigensolver.
+   ! The ScaLAPACK eigensolver is used as fallback for all smaller cases.
+   INTEGER, SAVE       :: dlaf_neigvec_min = 0
    ! Threshold value for the orthonormality check of the eigenvectors obtained
    ! after a diagonalization. A negative value disables the check.
    REAL(KIND=dp), SAVE :: eps_check_diag = -1.0_dp
@@ -116,14 +119,18 @@ CONTAINS
 !> \param elpa_print logical that determines if information about the ELPA diagonalization should
 !>                   be printed
 !> \param elpa_qr_unsafe logical that enables potentially unsafe ELPA options
+!> \param dlaf_neigvec_min_input ...
 !> \param eps_check_diag_input ...
 !> \author  MI 11.2013
+!> \par History
+!>      - Add support for DLA-Future (05.09.2023, RMeli)
 ! **************************************************************************************************
    SUBROUTINE diag_init(diag_lib, fallback_applied, elpa_kernel, elpa_neigvec_min_input, elpa_qr, &
-                        elpa_print, elpa_qr_unsafe, eps_check_diag_input)
+                        elpa_print, elpa_qr_unsafe, dlaf_neigvec_min_input, eps_check_diag_input)
       CHARACTER(LEN=*), INTENT(IN)                       :: diag_lib
       LOGICAL, INTENT(OUT)                               :: fallback_applied
       INTEGER, INTENT(IN)                                :: elpa_kernel, elpa_neigvec_min_input
+      INTEGER, INTENT(IN)                                :: dlaf_neigvec_min_input
       LOGICAL, INTENT(IN)                                :: elpa_qr, elpa_print, elpa_qr_unsafe
       REAL(KIND=dp), INTENT(IN)                          :: eps_check_diag_input
 
@@ -161,6 +168,7 @@ CONTAINS
       END IF
 
       elpa_neigvec_min = elpa_neigvec_min_input
+      dlaf_neigvec_min = dlaf_neigvec_min_input
       eps_check_diag = eps_check_diag_input
 
    END SUBROUTINE diag_init
@@ -221,7 +229,12 @@ CONTAINS
          END IF
       
       ELSE IF (diag_type == FM_DIAG_TYPE_DLAF) THEN
-         CALL cp_fm_diag_dlaf(matrix, eigenvectors, eigenvalues)
+         IF(SIZE(eigenvalues) < dlaf_neigvec_min) THEN
+            ! Use ScaLAPACK for small matrices
+            CALL cp_fm_syevd(matrix, eigenvectors, eigenvalues, info)
+         ELSE
+            CALL cp_fm_diag_dlaf(matrix, eigenvectors, eigenvalues)
+         END IF
       ELSE
          CPABORT("ERROR in "//routineN//": Invalid diagonalization type requested")
       END IF
