@@ -106,6 +106,7 @@ CONTAINS
 
       CPASSERT(.NOT. ASSOCIATED(globenv))
       ALLOCATE (globenv)
+      ALLOCATE (globenv%gaussian_rng_stream)
       globenv%ref_count = 1
       globenv%cp2k_start_time = m_walltime()
 
