@@ -107,7 +107,7 @@ CONTAINS
       TYPE(cp_fm_type), INTENT(IN)  :: matrix, eigenvectors
       REAL(KIND=dp), DIMENSION(:), INTENT(OUT) :: eigenvalues
 
-      CHARACTER(LEN=*), PARAMETER              :: routineN = 'cp_fm_syevd'
+      CHARACTER(LEN=*), PARAMETER              :: routineN = 'cp_fm_diag_dlaf'
 
       INTEGER                                  :: handle, n, nmo
       REAL(KIND=dp), ALLOCATABLE, DIMENSION(:), TARGET :: eig
@@ -152,13 +152,14 @@ CONTAINS
       TYPE(cp_fm_type), INTENT(IN) :: eigenvectors
       REAL(kind=dp), DIMENSION(:), INTENT(OUT), TARGET :: eigenvalues
 
-      INTEGER :: handle, n, nmo
+      INTEGER :: handle, n, nmo, dlaf_handle
       INTEGER, TARGET :: info
 
       INTEGER, DIMENSION(9)                    :: desca, descz
       REAL(KIND=dp), DIMENSION(:, :), POINTER  :: a, z
 
       CHARACTER(len=*), PARAMETER :: routineN = 'cp_fm_diag_dlaf_base'
+      CHARACTER(len=*), PARAMETER :: dlaf_name = 'pdsyevd_dlaf'
       CHARACTER(LEN=100)   :: message
 
       INTERFACE
@@ -177,11 +178,13 @@ CONTAINS
       call timeset(routineN, handle)
 
 #if defined(__DLAF)
-      n = matrix%matrix_struct%nrow_global
-
       ! DLAF needs the lower triangular part
       ! Use eigenvectors matrix as workspace
       CALL cp_fm_upper_to_full(matrix, eigenvectors)
+
+      call timeset(dlaf_name, dlaf_handle)
+
+      n = matrix%matrix_struct%nrow_global
 
       a => matrix%local_data
       z => eigenvectors%local_data
@@ -198,6 +201,8 @@ CONTAINS
          z=C_LOC(z(1, 1)), iz=1, jz=1, descz=descz, &
          info=C_LOC(info) &
          )
+      
+      call timestop(dlaf_handle)
 
       IF (info /= 0) THEN
          WRITE (message, "(A,I0,A)") "ERROR in DLAF_PDSYEVD: Eigensolver failed (INFO = ", info, ")"
@@ -210,6 +215,8 @@ CONTAINS
       MARK_USED(n)
       MARK_USED(nmo)
       MARK_USED(info)
+      MARK_USED(dlaf_handle)
+      MARK_USED(dlaf_name)
       CPABORT("CP2K compiled without DLAF library.")
 #endif
 
