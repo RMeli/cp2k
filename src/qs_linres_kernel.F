@@ -373,8 +373,8 @@ CONTAINS
             IF (nspins == 1) THEN
 
                IF (.NOT. (lr_triplet)) THEN
-                  v_rspace_new(1)%cr3d = 2.0_dp*v_rspace_new(1)%cr3d
-                  IF (ASSOCIATED(v_xc_tau)) v_xc_tau(1)%cr3d = 2.0_dp*v_xc_tau(1)%cr3d
+                  CALL pw_scale(v_rspace_new(1), 2.0_dp)
+                  IF (ASSOCIATED(v_xc_tau)) CALL pw_scale(v_xc_tau(1), 2.0_dp)
                END IF
                CALL qs_rho_get(rho1, rho_ao=rho1_ao)
                ! remove kpp1_env%v_ao and work directly on k_p_p1 ?
@@ -395,7 +395,7 @@ CONTAINS
 
                ! add hartree only for SINGLETS
                IF (.NOT. lr_triplet) THEN
-                  v_rspace_new(1)%cr3d = 2.0_dp*v_hartree_rspace%cr3d
+                  CALL pw_axpy(v_hartree_rspace, v_rspace_new(1), 2.0_dp, 0.0_dp)
 
                   CALL integrate_v_rspace(v_rspace=v_rspace_new(ispin), &
                                           pmat=rho_ao(ispin), &
@@ -420,7 +420,7 @@ CONTAINS
                                           calculate_forces=.FALSE., gapw=gapw_xc)
                END IF
 
-               v_rspace_new(ispin)%cr3d = v_hartree_rspace%cr3d
+               CALL pw_copy(v_hartree_rspace, v_rspace_new(ispin))
                CALL integrate_v_rspace(v_rspace=v_rspace_new(ispin), &
                                        pmat=rho_ao(ispin), &
                                        hmat=kpp1_env%v_ao(ispin), &
@@ -432,18 +432,16 @@ CONTAINS
 
             IF (nspins == 1) THEN
                IF (.NOT. (lr_triplet)) THEN
-                  v_rspace_new(1)%cr3d = 2.0_dp*v_rspace_new(1)%cr3d
-                  IF (ASSOCIATED(v_xc_tau)) v_xc_tau(1)%cr3d = 2.0_dp*v_xc_tau(1)%cr3d
+                  CALL pw_scale(v_rspace_new(1), 2.0_dp)
+                  IF (ASSOCIATED(v_xc_tau)) CALL pw_scale(v_xc_tau(1), 2.0_dp)
                END IF
                ! add hartree only for SINGLETS
                !IF (res_etype == tddfpt_singlet) THEN
                IF (.NOT. lr_triplet) THEN
-                  v_rspace_new(1)%cr3d = v_rspace_new(1)%cr3d + &
-                                         2.0_dp*v_hartree_rspace%cr3d
+                  CALL pw_axpy(v_hartree_rspace, v_rspace_new(1), 2.0_dp)
                END IF
             ELSE
-               v_rspace_new(ispin)%cr3d = v_rspace_new(ispin)%cr3d + &
-                                          v_hartree_rspace%cr3d
+               CALL pw_axpy(v_hartree_rspace, v_rspace_new(ispin), 1.0_dp)
             END IF
 
             IF (lrigpw) THEN
@@ -543,10 +541,10 @@ CONTAINS
       END DO
       DEALLOCATE (v_rspace_new)
       IF (ASSOCIATED(v_xc_tau)) THEN
-      DO ispin = 1, nspins
-         CALL pw_pool_give_back_pw(auxbas_pw_pool, v_xc_tau(ispin))
-      END DO
-      DEALLOCATE (v_xc_tau)
+         DO ispin = 1, nspins
+            CALL pw_pool_give_back_pw(auxbas_pw_pool, v_xc_tau(ispin))
+         END DO
+         DEALLOCATE (v_xc_tau)
       END IF
 
       CALL timestop(handle)
@@ -923,7 +921,6 @@ CONTAINS
                rho_atom_set => admm_env%admm_gapw_env%local_rho_set%rho_atom_set
                rho1_atom_set => p_env%local_rho_set_admm%rho_atom_set
                CALL calculate_xc_2nd_deriv_atom(rho_atom_set, rho1_atom_set, qs_env, xc_section, para_env, &
-                                                do_tddft=.FALSE., do_triplet=.FALSE., &
                                                 kind_set_external=admm_env%admm_gapw_env%admm_kind_set)
                basis_type = "AUX_FIT_SOFT"
                task_list => admm_env%admm_gapw_env%task_list
@@ -933,7 +930,7 @@ CONTAINS
             IF (nspins == 1) alpha = 2.0_dp
 
             DO ispin = 1, nspins
-               v_xc(ispin)%cr3d = v_xc(ispin)%cr3d*v_xc(ispin)%pw_grid%dvol
+               CALL pw_scale(v_xc(ispin), v_xc(ispin)%pw_grid%dvol)
                CALL dbcsr_copy(xcmat%matrix, matrix_s(1)%matrix)
                CALL dbcsr_set(xcmat%matrix, 0.0_dp)
                CALL integrate_v_rspace(v_rspace=v_xc(ispin), hmat=xcmat, qs_env=qs_env, &

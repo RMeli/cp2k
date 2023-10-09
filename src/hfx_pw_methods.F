@@ -40,7 +40,9 @@ MODULE hfx_pw_methods
    USE pw_env_types,                    ONLY: pw_env_type
    USE pw_grid_types,                   ONLY: pw_grid_type
    USE pw_methods,                      ONLY: pw_copy,&
-                                              pw_transfer
+                                              pw_multiply,&
+                                              pw_transfer,&
+                                              pw_zero
    USE pw_poisson_methods,              ONLY: pw_poisson_solve
    USE pw_poisson_types,                ONLY: pw_poisson_type
    USE pw_pool_types,                   ONLY: pw_pool_create_pw,&
@@ -98,7 +100,7 @@ CONTAINS
       INTEGER                                            :: blocksize, handle, ig, iloc, iorb, &
                                                             iorb_block, ispin, iw, jloc, jorb, &
                                                             jorb_block, norb, potential_type
-      LOGICAL                                            :: do_pw_hfx, explicit
+      LOGICAL                                            :: do_kpoints, do_pw_hfx, explicit
       REAL(KIND=dp)                                      :: exchange_energy, fraction, g2, g3d, gg, &
                                                             omega, pair_energy, rcut, scaling
       TYPE(atomic_kind_type), DIMENSION(:), POINTER      :: atomic_kind_set
@@ -126,8 +128,9 @@ CONTAINS
          CALL section_vals_val_get(hfx_section, "PW_HFX_BLOCKSIZE", i_val=blocksize)
 
          CALL get_qs_env(qs_env, mos=mo_array, pw_env=pw_env, dft_control=dft_control, &
-                         cell=cell, particle_set=particle_set, &
+                         cell=cell, particle_set=particle_set, do_kpoints=do_kpoints, &
                          atomic_kind_set=atomic_kind_set, qs_kind_set=qs_kind_set)
+         IF (do_kpoints) CPABORT("PW HFX not implemented with K-points")
 
          ! limit the blocksize by the number of orbitals
          CALL get_mo_set(mo_set=mo_array(1), mo_coeff=mo_coeff)
@@ -233,7 +236,8 @@ CONTAINS
                         IF (jorb < iorb) CYCLE
 
                         ! compute the pair density
-                        rho_r%cr3d = rho_i(iloc)%cr3d*rho_j(jloc)%cr3d
+                        CALL pw_zero(rho_r)
+                        CALL pw_multiply(rho_r, rho_i(iloc), rho_j(jloc))
 
                         ! go the g-space and compute hartree energy
                         CALL pw_transfer(rho_r, rho_g)

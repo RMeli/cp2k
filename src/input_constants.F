@@ -926,6 +926,7 @@ MODULE input_constants
                                                ramp_env = 3, &
                                                custom_env = 4
 
+   ! type of reference for RTP%PRINT%PROJECTION_MO
    INTEGER, PARAMETER, PUBLIC               :: proj_mo_ref_scf = 1, &
                                                proj_mo_ref_xas_tdp = 2
 
@@ -1068,7 +1069,11 @@ MODULE input_constants
                                                gw_gf_gamma = 15, &
                                                soc_none = 16, &
                                                soc_lda = 17, &
-                                               soc_pbe = 18
+                                               soc_pbe = 18, &
+                                               int_ldos_x = 19, &
+                                               int_ldos_y = 20, &
+                                               int_ldos_z = 21, &
+                                               int_ldos_none = 22
 
    ! periodic RESP parameters
    INTEGER, PARAMETER, PUBLIC               :: do_resp_x_dir = 0, &
@@ -1097,10 +1102,14 @@ MODULE input_constants
                                                do_lri_opt_coeff = 1, &
                                                do_lri_opt_exps = 2
 
-   ! Active smape model parameters
+   ! Active space model parameters
    INTEGER, PARAMETER, PUBLIC               :: hf_model = 100, &
                                                rsdft_model = 101, &
                                                dmft_model = 102
+
+   ! Active space external solvers
+   INTEGER, PARAMETER, PUBLIC               :: no_solver = 200, &
+                                               qiskit_solver = 201
 
    ! callgraph parameters
    INTEGER, PARAMETER, PUBLIC               :: callgraph_none = 0, &
@@ -1252,5 +1261,10 @@ MODULE input_constants
                                                scan_xz = 13, &
                                                scan_yz = 23, &
                                                scan_xyz = 123
+
+   ! DFT%PRINT%WFN_MIX orgine type
+   INTEGER, PARAMETER, PUBLIC               :: wfn_mix_orig_occ = 1, &
+                                               wfn_mix_orig_virtual = 2, &
+                                               wfn_mix_orig_external = 3
 
 END MODULE input_constants

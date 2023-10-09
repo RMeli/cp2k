@@ -28,12 +28,12 @@ unzip -q -d ./tools/minimax_tools/1_xData 1_xData.zip
 run_test ./tools/prettify/prettify_test.py
 run_test ./tools/minimax_tools/minimax_to_fortran_source.py --check
 run_test ./tools/docker/generate_dockerfiles.py --check
+run_test ./tools/docker/production/generate_docker_files.py --check
 run_test ./tools/apptainer/generate_apptainer_def_files.py --check
 
 run_test mypy --strict ./tools/minimax_tools/minimax_to_fortran_source.py
 run_test mypy --strict ./tools/dashboard/generate_dashboard.py
 run_test mypy --strict ./tools/dashboard/generate_regtest_survey.py
-run_test mypy --strict ./tools/regtesting/do_regtest.py
 run_test mypy --strict ./tools/regtesting/optimize_test_dirs.py
 run_test mypy --strict ./tools/precommit/precommit.py
 run_test mypy --strict ./tools/precommit/check_file_properties.py
@@ -41,7 +41,9 @@ run_test mypy --strict ./tools/precommit/format_makefile.py
 run_test mypy --strict ./tools/docker/generate_dockerfiles.py
 run_test mypy --strict ./tools/apptainer/generate_apptainer_def_files.py
 run_test mypy --strict ./tools/conventions/analyze_gfortran_ast.py
+run_test mypy --strict ./tests/do_regtest.py
 run_test mypy --strict ./docs/generate_input_reference.py
+run_test mypy --strict ./docs/fix_github_links.py
 
 # TODO: Find a way to test generate_dashboard.py without git repository.
 #

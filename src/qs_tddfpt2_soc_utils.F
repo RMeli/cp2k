@@ -123,12 +123,6 @@ CONTAINS
 
    END SUBROUTINE soc_dipole_operator
 
-!******************************************************************************
-! \brief Will write the tddft Excitation vectors into a single fm
-!          It was optaint as a nspin x nstat matrix of fms
-! \param fm_start a nspin x nstat Matrix of matries
-! \param fm_res one output matrix with the dimensions nao x nocc*nspin*nstat
-!******************************************************************************
 ! **************************************************************************************************
 !> \brief ...
 !> \param fm_start ...

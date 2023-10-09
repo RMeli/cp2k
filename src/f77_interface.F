@@ -139,6 +139,7 @@ MODULE f77_interface
                                               timings_register_hooks
    USE timings_types,                   ONLY: timer_env_type
    USE virial_types,                    ONLY: virial_type
+   USE cp_dlaf_utils,                   ONLY: cp_dlaf_initialize, cp_dlaf_finalize
 #include "./base/base_uses.f90"
 
    IMPLICIT NONE
@@ -149,17 +150,17 @@ MODULE f77_interface
 
 ! **************************************************************************************************
    TYPE f_env_p_type
-      TYPE(f_env_type), POINTER :: f_env
+      TYPE(f_env_type), POINTER :: f_env => NULL()
    END TYPE f_env_p_type
 
 ! **************************************************************************************************
    TYPE f_env_type
-      INTEGER :: id_nr
-      TYPE(force_env_type), POINTER      :: force_env
-      TYPE(cp_logger_type), POINTER      :: logger
-      TYPE(timer_env_type), POINTER      :: timer_env
-      TYPE(mp_perf_env_type), POINTER    :: mp_perf_env
-      CHARACTER(len=default_path_length) :: my_path, old_path
+      INTEGER :: id_nr = 0
+      TYPE(force_env_type), POINTER      :: force_env => NULL()
+      TYPE(cp_logger_type), POINTER      :: logger => NULL()
+      TYPE(timer_env_type), POINTER      :: timer_env => NULL()
+      TYPE(mp_perf_env_type), POINTER    :: mp_perf_env => NULL()
+      CHARACTER(len=default_path_length) :: my_path = "", old_path = ""
    END TYPE f_env_type
 
    TYPE(f_env_p_type), DIMENSION(:), POINTER, SAVE :: f_envs
@@ -286,6 +287,8 @@ CONTAINS
          CALL pw_gpu_init()
          CALL grid_library_init()
 
+         CALL cp_dlaf_initialize()
+
          CALL dbm_library_init()
       ELSE
          ierr = cp_failure_level
@@ -331,6 +334,8 @@ CONTAINS
          CALL mp_para_env_release(default_para_env)
          ierr = 0
          CALL cp_rm_default_logger()
+
+         CALL cp_dlaf_finalize()
 
          !   *** deallocate the bibliography ***
          CALL remove_all_references()

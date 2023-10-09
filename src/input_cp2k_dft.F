@@ -17,12 +17,13 @@ MODULE input_cp2k_dft
    USE bibliography,                    ONLY: &
         Andermatt2016, Andreussi2012, Avezac2005, BaniHashemian2016, Becke1988b, Bengtsson1999, &
         Blochl1995, Brehm2018, Brelaz1979, Dewar1977, Dewar1985, Dudarev1997, Dudarev1998, &
-        Ehrhardt1985, Fattebert2002, Golze2017a, Golze2017b, Guidon2010, Heinzmann1976, &
-        Holmberg2017, Holmberg2018, Iannuzzi2005, Iannuzzi2006, Iannuzzi2007, Knizia2013, &
-        Kolafa2004, Krack2000, Krack2002, Kuhne2007, Kunert2003, Lippert1997, Lippert1999, Lu2004, &
-        Perdew1981, Repasky2002, Rocha2006, Schenter2008, Schiffmann2015, Shigeta2001, &
-        Stewart1982, Stewart1989, Stewart2007, Thiel1992, VanVoorhis2015, VandeVondele2003, &
-        VandeVondele2005a, VandeVondele2005b, VandeVondele2006, Weber2008, Yin2017
+        Ehrhardt1985, Eriksen2020, Fattebert2002, Golze2017a, Golze2017b, Guidon2010, &
+        Heinzmann1976, Holmberg2017, Holmberg2018, Iannuzzi2005, Iannuzzi2006, Iannuzzi2007, &
+        Knizia2013, Kolafa2004, Krack2000, Krack2002, Kuhne2007, Kunert2003, Lippert1997, &
+        Lippert1999, Lu2004, Perdew1981, Repasky2002, Rocha2006, Schenter2008, Schiffmann2015, &
+        Shigeta2001, Stewart1982, Stewart1989, Stewart2007, Thiel1992, VanVoorhis2015, &
+        VandeVondele2003, VandeVondele2005a, VandeVondele2005b, VandeVondele2006, Weber2008, &
+        Yin2017
    USE cp_output_handling,              ONLY: add_last_numeric,&
                                               cp_print_key_section_create,&
                                               debug_print_level,&
@@ -73,11 +74,11 @@ MODULE input_cp2k_dft
         jacobian_fd1_central, jacobian_fd2, jacobian_fd2_backward, kg_color_dsatur, &
         kg_color_greedy, kg_tnadd_atomic, kg_tnadd_embed, kg_tnadd_embed_ri, kg_tnadd_none, &
         ls_2pnt, ls_3pnt, ls_gold, ls_none, manual_selection, mao_basis_ext, mao_basis_orb, &
-        mao_basis_prim, mao_projection, mopac_guess, no_excitations, no_guess, numerical, oe_gllb, &
-        oe_lb, oe_none, oe_saop, oe_sic, orb_dx2, orb_dxy, orb_dy2, orb_dyz, orb_dz2, orb_dzx, &
-        orb_px, orb_py, orb_pz, orb_s, ot_algo_irac, ot_algo_taylor_or_diag, ot_chol_irac, &
-        ot_lwdn_irac, ot_mini_broyden, ot_mini_cg, ot_mini_diis, ot_mini_sd, ot_poly_irac, &
-        ot_precond_full_all, ot_precond_full_kinetic, ot_precond_full_single, &
+        mao_basis_prim, mao_projection, mopac_guess, no_excitations, no_guess, no_solver, &
+        numerical, oe_gllb, oe_lb, oe_none, oe_saop, oe_sic, orb_dx2, orb_dxy, orb_dy2, orb_dyz, &
+        orb_dz2, orb_dzx, orb_px, orb_py, orb_pz, orb_s, ot_algo_irac, ot_algo_taylor_or_diag, &
+        ot_chol_irac, ot_lwdn_irac, ot_mini_broyden, ot_mini_cg, ot_mini_diis, ot_mini_sd, &
+        ot_poly_irac, ot_precond_full_all, ot_precond_full_kinetic, ot_precond_full_single, &
         ot_precond_full_single_inverse, ot_precond_none, ot_precond_s_inverse, &
         ot_precond_solver_default, ot_precond_solver_direct, ot_precond_solver_inv_chol, &
         ot_precond_solver_update, outer_scf_basis_center_opt, outer_scf_becke_constraint, &
@@ -86,9 +87,9 @@ MODULE input_cp2k_dft
         outer_scf_optimizer_diis, outer_scf_optimizer_newton, outer_scf_optimizer_newton_ls, &
         outer_scf_optimizer_none, outer_scf_optimizer_sd, outer_scf_optimizer_secant, &
         outer_scf_s2_constraint, plus_u_lowdin, plus_u_mulliken, plus_u_mulliken_charges, &
-        radius_covalent, radius_default, radius_single, radius_user, radius_vdw, random_guess, &
-        real_time_propagation, ref_charge_atomic, ref_charge_mulliken, rel_dkh, rel_none, &
-        rel_pot_erfc, rel_pot_full, rel_sczora_mp, rel_trans_atom, rel_trans_full, &
+        qiskit_solver, radius_covalent, radius_default, radius_single, radius_user, radius_vdw, &
+        random_guess, real_time_propagation, ref_charge_atomic, ref_charge_mulliken, rel_dkh, &
+        rel_none, rel_pot_erfc, rel_pot_full, rel_sczora_mp, rel_trans_atom, rel_trans_full, &
         rel_trans_molecule, rel_zora, rel_zora_full, rel_zora_mp, restart_guess, rsdft_model, &
         sccs_andreussi, sccs_derivative_cd3, sccs_derivative_cd5, sccs_derivative_cd7, &
         sccs_derivative_fft, sccs_fattebert_gygi, shape_function_density, shape_function_gaussian, &
@@ -100,10 +101,11 @@ MODULE input_cp2k_dft
         weight_type_unit, wfi_aspc_nr, wfi_frozen_method_nr, wfi_linear_p_method_nr, &
         wfi_linear_ps_method_nr, wfi_linear_wf_method_nr, wfi_ps_method_nr, &
         wfi_use_guess_method_nr, wfi_use_prev_p_method_nr, wfi_use_prev_rho_r_method_nr, &
-        wfi_use_prev_wf_method_nr, xas_1s_type, xas_2p_type, xas_2s_type, xas_3d_type, &
-        xas_3p_type, xas_3s_type, xas_4d_type, xas_4f_type, xas_4p_type, xas_4s_type, xas_dip_len, &
-        xas_dip_vel, xas_dscf, xas_none, xas_not_excited, xas_tdp_by_index, xas_tdp_by_kind, &
-        xas_tp_fh, xas_tp_flex, xas_tp_hh, xas_tp_xfh, xas_tp_xhh, xes_tp_val
+        wfi_use_prev_wf_method_nr, wfn_mix_orig_external, wfn_mix_orig_occ, wfn_mix_orig_virtual, &
+        xas_1s_type, xas_2p_type, xas_2s_type, xas_3d_type, xas_3p_type, xas_3s_type, xas_4d_type, &
+        xas_4f_type, xas_4p_type, xas_4s_type, xas_dip_len, xas_dip_vel, xas_dscf, xas_none, &
+        xas_not_excited, xas_tdp_by_index, xas_tdp_by_kind, xas_tp_fh, xas_tp_flex, xas_tp_hh, &
+        xas_tp_xfh, xas_tp_xhh, xes_tp_val
    USE input_cp2k_almo,                 ONLY: create_almo_scf_section
    USE input_cp2k_distribution,         ONLY: create_distribution_section
    USE input_cp2k_ec,                   ONLY: create_ec_section
@@ -506,6 +508,10 @@ CONTAINS
       CALL section_release(subsection)
 
       CALL create_sccs_section(subsection)
+      CALL section_add_subsection(section, subsection)
+      CALL section_release(subsection)
+
+      CALL create_active_space_section(subsection)
       CALL section_add_subsection(section, subsection)
       CALL section_release(subsection)
 
@@ -1074,10 +1080,6 @@ CONTAINS
       CALL section_release(print_key)
 
       CALL create_wfn_mix_section(subsection)
-      CALL section_add_subsection(section, subsection)
-      CALL section_release(subsection)
-
-      CALL create_active_space_section(subsection)
       CALL section_add_subsection(section, subsection)
       CALL section_release(subsection)
 
@@ -1802,6 +1804,16 @@ CONTAINS
       CALL section_add_subsection(section, print_key)
       CALL section_release(print_key)
 
+      !Energy Decomposition Analysis
+      CALL cp_print_key_section_create(print_key, __LOCATION__, "ENERGY_DECOMPOSITION_ANALYSIS", &
+                                       description="Controls energy decomposition analysis", &
+                                       print_level=debug_print_level, filename="__STD_OUT__", &
+                                       common_iter_levels=1, &
+                                       citations=(/Eriksen2020/))
+
+      CALL section_add_subsection(section, print_key)
+      CALL section_release(print_key)
+
       ! IAO (Intrinsic atomic orbital) analysis
       CALL cp_print_key_section_create(print_key, __LOCATION__, "IAO_ANALYSIS", &
                                        description="Controls the printing of the IAO (intrinsic atomic orbital) analysis", &
@@ -2500,7 +2512,10 @@ CONTAINS
       NULLIFY (keyword)
 
       CALL cp_print_key_section_create(print_key, __LOCATION__, "MO_CUBES", &
-                                       description="Controls the printing of the molecular orbitals (MOs) as cube files.", &
+                                       description="Controls the printing of the molecular orbitals (MOs) as cube files."// &
+                                       " It can be used during a Real Time calculation to print the MOs."// &
+                                       " In this case, the density corresponding to the time dependent MO is printed"// &
+                                       " instead of the wave-function.", &
                                        print_level=high_print_level, filename="")
       CALL keyword_create(keyword, __LOCATION__, name="stride", &
                           description="The stride (X,Y,Z) used to write the cube file "// &
@@ -2835,12 +2850,19 @@ CONTAINS
                           description="A section that allows manipulation of the MO coeffs,"// &
                           " e.g. for changing a ground state into an excited state."// &
                           "Starting from a copy of the original MOs, changes can be made"// &
-                          "by adding linear combinations of HOMO/LUMO of the original MOs to the result MOs", &
+                          "by adding linear combinations of HOMO/LUMO of the original MOs to the result MOs."// &
+                          "This method is called after an SCF optimization or before an RTP run if "// &
+                          "INITIAL_WFN=RESTART_WFN. Note that if called after an SCF optimization, a restart file "// &
+                          "with the mixed MOs is saved. This is not the case for an RTP with "// &
+                          "INITIAL_WFN=RESTART_WFN.", &
                           n_keywords=1, n_subsections=0, repeats=.FALSE.)
 
       CALL keyword_create(keyword, __LOCATION__, name="OVERWRITE_MOS", &
-                          description="If the keyword is active molecular orbitals in memory will be replaced by the mixed wfn."// &
-                          " In combination with RTP or EMD no restart will be required to use the mixed wfn.", &
+                        description="If set to True, the active molecular orbitals in memory will be replaced by the mixed wfn "// &
+                        "at the end of the wfn mixing procedure. For instance, you can then use this new set of MOs to perform "// &
+                          "RTP or EMD directly. Not that in the case of an RTP run with INITIAL_WFN=RESTART_WFN, this keyword "// &
+                          "is not used: the mixed wfn is used to start the time-dependent run. "// &
+                          "Default value is False.", &
                           default_l_val=.FALSE., lone_keyword_l_val=.TRUE.)
       CALL section_add_keyword(section, keyword)
       CALL keyword_release(keyword)
@@ -2851,7 +2873,8 @@ CONTAINS
                           n_keywords=1, n_subsections=0, repeats=.TRUE.)
 
       CALL keyword_create(keyword, __LOCATION__, name="RESULT_MO_INDEX", &
-                          description="Index of the MO (y) to be modified. Counting down in energy with HOMO=1", &
+                          description="Index of the MO (y) to be modified. Counting down in energy: "// &
+                          "set to 1 for the HOMO, to 3 for the HOMO-3.", &
                           usage="RESULT_MO_INDEX 1", type_of_var=integer_t, default_i_val=0)
       CALL section_add_keyword(subsection, keyword)
       CALL keyword_release(keyword)
@@ -2881,7 +2904,13 @@ CONTAINS
 
       CALL keyword_create(keyword, __LOCATION__, name="ORIG_MO_INDEX", &
                           description="Index of the original MO (x). "// &
-                          "Counting down in energy with HOMO=1 or up from LUMO=1, depending on ORIG_IS_VIRTUAL.", &
+                          "If ORIG_TYPE is OCCUPIED, it counts down in energy: set to 1 to point to "// &
+                          "the HOMO and to 3 for the HOMO-3. "// &
+                          "If ORIG_TYPE is VIRTUAL, it counts up in energy: set to 1 to point to "// &
+                          "the LUMO and to 3 for the LUMO+3. "// &
+                          "If ORIG_TYPE is EXTERNAL, it counts down in energy for the external "// &
+                          "set of MOs: set to 1 to point to the HOMO and to 3 for the HOMO-3."// &
+                          "Do not set to zero or negative values.", &
                           usage="ORIG_MO_INDEX 1", type_of_var=integer_t, default_i_val=0)
       CALL section_add_keyword(subsection, keyword)
       CALL keyword_release(keyword)
@@ -2909,9 +2938,31 @@ CONTAINS
       CALL section_add_keyword(subsection, keyword)
       CALL keyword_release(keyword)
 
-      CALL keyword_create(keyword, __LOCATION__, name="ORIG_IS_VIRTUAL", &
-                          description="The original MO (x) is a LUMO.", &
-                          usage="ORIG_IS_VIRTUAL", type_of_var=logical_t)
+      CALL keyword_create(keyword, __LOCATION__, name="ORIG_TYPE", &
+                          description="Type of the orgine MO. Note that using VIRTUAL along with an RTP run with "// &
+                          "INITIAL_WFN=RESTART_WFN will probably crash since no virtual state "// &
+                          "will be available.", &
+                          enum_c_vals=s2a("OCCUPIED", "VIRTUAL", 'EXTERNAL'), &
+                          usage="ORIG_TYPE OCCUPIED", &
+                          default_i_val=wfn_mix_orig_occ, &
+                          enum_desc=s2a("The original MO is in the MOs matrix itself.", &
+                                        "The original MO is not in the MOs matrix but in the 'unoccupied' one. "// &
+                                        "The SCF cycle shall provide it.", &
+                                        "The orginal MO is from an external .wfn file. Use the keyword "// &
+                                        "ORIG_EXT_FILE_NAME to define its name."), &
+                          enum_i_vals=(/wfn_mix_orig_occ, wfn_mix_orig_virtual, wfn_mix_orig_external/))
+      CALL section_add_keyword(subsection, keyword)
+      CALL keyword_release(keyword)
+
+      CALL keyword_create(keyword, __LOCATION__, name="ORIG_EXT_FILE_NAME", &
+                          description="Name of the wavefunction file to read the original MO from. "// &
+                          "For instance, a restart wfn file from SCF calculation or an excited state from XAS_TDP calculation. "// &
+                          "If no file is specified, the run will crash."// &
+                          "Currently, a RTP restart file (.rtpwfn) cannot be used as reference."// &
+                          "Currently, this file SHALL have the basis set, number of MO and the same number of spin as the one "// &
+                          "from the SCF cycle.", &
+                          usage="ORIG_EXT_FILE_NAME <FILENAME>", &
+                          default_lc_val="EMPTY")
       CALL section_add_keyword(subsection, keyword)
       CALL keyword_release(keyword)
 
@@ -8517,6 +8568,18 @@ CONTAINS
       CALL section_add_keyword(section, keyword)
       CALL keyword_release(keyword)
 
+      CALL keyword_create(keyword, __LOCATION__, name="APPLY_WFN_MIX_INIT_RESTART", &
+                          description="If set to True and in the case of INITIAL_WFN=RESTART_WFN, call the "// &
+                          "DFT%PRINT%WFN_MIX section to mix the read initial wfn. The starting wave-function of the "// &
+                          "RTP will be the mixed one. Setting this to True without a defined WFN_MIX section will "// &
+                          "not do anything as defining a WFN_MIX section without this keyword for RTP run with "// &
+                          "INITIAL_WFN=RESTART_WFN. Note that if INITIAL_WFN=SCF_WFN, this keyword is not needed to "// &
+                          "apply the mixing defined in the WFN_MIX section. Default is False.", &
+                          usage="APPLY_WFN_MIX_INIT_RESTART", &
+                          default_l_val=.FALSE., lone_keyword_l_val=.TRUE.)
+      CALL section_add_keyword(section, keyword)
+      CALL keyword_release(keyword)
+
       CALL keyword_create(keyword, __LOCATION__, name="APPLY_DELTA_PULSE", &
                           description="Applies a delta kick to the initial wfn (only RTP for now - the EMD "// &
                           " case is not yet implemented). Only work for INITIAL_WFN=SCF_WFN", &
@@ -9043,24 +9106,9 @@ CONTAINS
       CALL section_add_keyword(section, keyword)
       CALL keyword_release(keyword)
 
-      CALL keyword_create(keyword, __LOCATION__, name="INACTIVE_ELECTRONS", &
-                          description="The number of inactive electrons in the CAS space", &
-                          usage="INACTIVE_ELECTRONS 2 {2}", n_var=-1, default_i_vals=(/-1, -1/), &
-                          type_of_var=integer_t)
-      CALL section_add_keyword(section, keyword)
-      CALL keyword_release(keyword)
-
       CALL keyword_create(keyword, __LOCATION__, name="ACTIVE_ORBITALS", &
                           description="The number of active orbitals defining the CAS space.", &
-                          usage="ACTIVE_ORBITALS 2 {2}", n_var=-1, default_i_vals=(/-1, -1/), &
-                          type_of_var=integer_t)
-      CALL section_add_keyword(section, keyword)
-      CALL keyword_release(keyword)
-
-      CALL keyword_create(keyword, __LOCATION__, name="INACTIVE_ORBITALS", &
-                          description="The number of nactive orbitals.", &
-                          usage="INACTIVE_ORBITALS 2 {2}", n_var=-1, default_i_vals=(/-1, -1/), &
-                          type_of_var=integer_t)
+                          usage="ACTIVE_ORBITALS 2", n_var=1, default_i_val=-1, type_of_var=integer_t)
       CALL section_add_keyword(section, keyword)
       CALL keyword_release(keyword)
 
@@ -9111,16 +9159,42 @@ CONTAINS
       CALL section_add_keyword(section, keyword)
       CALL keyword_release(keyword)
 
-      CALL keyword_create(keyword, __LOCATION__, name="READ_P_ACTIVE", &
-                          description="Active density matrix must be read", &
+      CALL keyword_create(keyword, __LOCATION__, name="SCF_EMBEDDING", &
+                          description="Whether to turn on the self-consistent embedding scheme", &
                           default_l_val=.FALSE., lone_keyword_l_val=.FALSE.)
       CALL section_add_keyword(section, keyword)
       CALL keyword_release(keyword)
 
-      CALL keyword_create(keyword, __LOCATION__, name="P_ACTIVE_FILE_NAME", &
-                          description="Name of the active DM file, may include a path", &
-                          usage="P_ACTIVE_FILE_NAME <FILENAME>", &
-                          type_of_var=lchar_t, repeats=.FALSE.)
+      CALL keyword_create(keyword, __LOCATION__, name="QCSCHEMA", &
+                          description="Name of the QCSchema file, may include a path", &
+                          usage="QCSCHEMA <FILENAME>", &
+                          type_of_var=lchar_t, repeats=.FALSE., &
+                          default_lc_val="")
+      CALL section_add_keyword(section, keyword)
+      CALL keyword_release(keyword)
+
+      CALL keyword_create(keyword, __LOCATION__, name="AS_SOLVER", &
+                          description="The external active space solver for the embedding approach", &
+                          usage="AS_SOLVER QISKIT", &
+                          default_i_val=no_solver, &
+                          enum_c_vals=s2a("NONE", "QISKIT"), &
+                          enum_i_vals=(/no_solver, qiskit_solver/), &
+                          enum_desc=s2a("NO solver, used to produce FCIDUMP/QCSchema files", &
+                                        "QISKIT active space solver"))
+      CALL section_add_keyword(section, keyword)
+      CALL keyword_release(keyword)
+
+      CALL keyword_create(keyword, __LOCATION__, name="EPS_ITER", &
+                          description="Energy convergence threshold of the DFT embedding scheme.", &
+                          usage="EPS_ITER 1.0E-6 ", type_of_var=real_t, &
+                          default_r_val=1.0E-6_dp)
+      CALL section_add_keyword(section, keyword)
+      CALL keyword_release(keyword)
+
+      CALL keyword_create(keyword, __LOCATION__, name="MAX_ITER", &
+                          description="Max number of iterations for the DFT embedding scheme.", &
+                          usage="MAX_ITER 50", type_of_var=integer_t, &
+                          default_i_val=50)
       CALL section_add_keyword(section, keyword)
       CALL keyword_release(keyword)
 
@@ -9140,7 +9214,49 @@ CONTAINS
       CALL section_add_subsection(section, subsection)
       CALL section_release(subsection)
 
+      CALL create_socket_section(subsection)
+      CALL section_add_subsection(section, subsection)
+      CALL section_release(subsection)
+
    END SUBROUTINE create_active_space_section
+
+! **************************************************************************************************
+!> \brief ...
+!> \param section ...
+! **************************************************************************************************
+   SUBROUTINE create_socket_section(section)
+      TYPE(section_type), POINTER                        :: section
+
+      TYPE(keyword_type), POINTER                        :: keyword
+
+      CPASSERT(.NOT. ASSOCIATED(section))
+      CALL section_create(section, __LOCATION__, name="SOCKET", &
+                          description="Parameters to set up the socket communicating to the external active space solver.", &
+                          n_keywords=3, n_subsections=0, repeats=.FALSE.)
+
+      NULLIFY (keyword)
+      CALL keyword_create(keyword, __LOCATION__, name="INET", &
+                          description="Use an INET socket rather than a UNIX socket.", &
+                          usage="INET <LOGICAL>", &
+                          default_l_val=.FALSE., lone_keyword_l_val=.TRUE.)
+      CALL section_add_keyword(section, keyword)
+      CALL keyword_release(keyword)
+
+      CALL keyword_create(keyword, __LOCATION__, name="PORT", &
+                          description="Port number for the socket client.", &
+                          usage="port <INTEGER>", &
+                          default_i_val=12345)
+      CALL section_add_keyword(section, keyword)
+      CALL keyword_release(keyword)
+
+      CALL keyword_create(keyword, __LOCATION__, name="HOST", &
+                          description="Host name for the socket client.", &
+                          usage="host <HOSTNAME>", &
+                          default_c_val="embedding_socket")
+      CALL section_add_keyword(section, keyword)
+      CALL keyword_release(keyword)
+
+   END SUBROUTINE create_socket_section
 
 ! **************************************************************************************************
 !> \brief ...
@@ -9217,7 +9333,7 @@ CONTAINS
                           enum_i_vals=(/eri_method_full_gpw, eri_method_gpw_ht/), &
                           enum_desc=s2a("Use the GPW approach with MOs", &
                                         "Use the GPW approach for half-transformed MO ERIs"), &
-                          default_i_val=eri_method_gpw_ht)
+                          default_i_val=eri_method_full_gpw)
       CALL section_add_keyword(section, keyword)
       CALL keyword_release(keyword)
 
@@ -9240,7 +9356,7 @@ CONTAINS
       CALL keyword_create(keyword, __LOCATION__, name="OPERATOR_PARAMETER", &
                           description="Range parameter for ERI operator.", &
                           usage="OPERATOR_PARAMETER 4.0", type_of_var=real_t, &
-                          default_r_val=8.0_dp)
+                          default_r_val=0.5_dp)
       CALL section_add_keyword(section, keyword)
       CALL keyword_release(keyword)
 

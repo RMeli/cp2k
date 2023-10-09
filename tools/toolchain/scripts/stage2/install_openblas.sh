@@ -6,8 +6,8 @@
 [ "${BASH_SOURCE[0]}" ] && SCRIPT_NAME="${BASH_SOURCE[0]}" || SCRIPT_NAME=$0
 SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_NAME")/.." && pwd -P)"
 
-openblas_ver="0.3.23" # Keep in sync with get_openblas_arch.sh
-openblas_sha256="5d9491d07168a5d00116cdc068a40022c3455bf9293c7cb86a65b1054d7e5114"
+openblas_ver="0.3.24" # Keep in sync with get_openblas_arch.sh
+openblas_sha256="ceadc5065da97bd92404cac7254da66cc6eb192679cf1002098688978d4d5132"
 openblas_pkg="OpenBLAS-${openblas_ver}.tar.gz"
 
 source "${SCRIPT_DIR}"/common_vars.sh
@@ -48,8 +48,8 @@ case "${with_openblas}" in
       # TARGET, if this fails, then make with forced
       # TARGET=NEHALEM
       #
-      # wrt NUM_THREADS=64: this is what the most common Linux distros seem to choose atm
-      #                     for a good compromise between memory usage and scalability
+      # wrt NUM_THREADS=128: this is what the most common Linux distros seem to choose atm
+      #                      for a good compromise between memory usage and scalability
       #
       # Unfortunately, NO_SHARED=1 breaks ScaLAPACK build.
       case "${TARGET_CPU}" in
@@ -65,6 +65,9 @@ case "${with_openblas}" in
         "skylake-avx512")
           TARGET="SKYLAKEX"
           ;;
+        "znver*")
+          TARGET="ZEN"
+          ;;
         *)
           TARGET=${TARGET_CPU}
           ;;
@@ -75,7 +78,7 @@ case "${with_openblas}" in
         make -j $(get_nprocs) \
           MAKE_NB_JOBS=0 \
           TARGET=${TARGET} \
-          NUM_THREADS=64 \
+          NUM_THREADS=128 \
           USE_THREAD=1 \
           USE_OPENMP=1 \
           NO_AFFINITY=1 \
@@ -87,7 +90,7 @@ case "${with_openblas}" in
         make -j $(get_nprocs) \
           MAKE_NB_JOBS=0 \
           TARGET=NEHALEM \
-          NUM_THREADS=64 \
+          NUM_THREADS=128 \
           USE_THREAD=1 \
           USE_OPENMP=1 \
           NO_AFFINITY=1 \
@@ -99,7 +102,7 @@ case "${with_openblas}" in
       make -j $(get_nprocs) \
         MAKE_NB_JOBS=0 \
         TARGET=${TARGET} \
-        NUM_THREADS=64 \
+        NUM_THREADS=128 \
         USE_THREAD=1 \
         USE_OPENMP=1 \
         NO_AFFINITY=1 \
@@ -113,7 +116,12 @@ case "${with_openblas}" in
     OPENBLAS_CFLAGS="-I'${pkg_install_dir}/include'"
     OPENBLAS_LDFLAGS="-L'${pkg_install_dir}/lib' -Wl,-rpath,'${pkg_install_dir}/lib'"
     OPENBLAS_ROOT="${pkg_install_dir}"
-    OPENBLAS_LIBS="-lopenblas"
+    # Prefer static library if available
+    if [ -f "${pkg_install_dir}/lib/libopenblas.a" ]; then
+      OPENBLAS_LIBS="-l:libopenblas.a"
+    else
+      OPENBLAS_LIBS="-lopenblas"
+    fi
     ;;
   __SYSTEM__)
     echo "==================== Finding LAPACK from system paths ===================="

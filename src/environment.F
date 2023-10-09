@@ -15,105 +15,105 @@
 !> \author JGH,MK
 ! **************************************************************************************************
 MODULE environment
-   USE bibliography,                    ONLY: Frigo2005,&
-                                              Marek2014,&
-                                              cite_reference
-   USE cp2k_info,                       ONLY: &
-        compile_arch, compile_date, compile_host, compile_revision, cp2k_flags, cp2k_home, &
-        cp2k_version, cp2k_year, get_runtime_info, r_host_name, r_pid, r_user_name
-   USE cp_error_handling,               ONLY: warning_counter
-   USE cp_files,                        ONLY: close_file,&
-                                              get_data_dir,&
-                                              open_file
-   USE cp_fm_diag,                      ONLY: FM_DIAG_TYPE_CUSOLVER,&
-                                              FM_DIAG_TYPE_ELPA,&
-                                              FM_DIAG_TYPE_SCALAPACK,&
-                                              FM_DIAG_TYPE_DLAF,&
-                                              diag_finalize,&
-                                              diag_init,&
-                                              eps_check_diag_default
-   USE cp_fm_diag_utils,                ONLY: cp_fm_redistribute_init
-   USE cp_fm_struct,                    ONLY: cp_fm_struct_config
-   USE cp_fm_types,                     ONLY: cp_fm_get_mm_type,&
-                                              cp_fm_setup
-   USE cp_log_handling,                 ONLY: &
-        cp_add_default_logger, cp_get_default_logger, cp_logger_create, &
-        cp_logger_get_default_unit_nr, cp_logger_release, cp_logger_set, cp_logger_type, &
-        cp_rm_default_logger, cp_to_string
-   USE cp_output_handling,              ONLY: cp_mpi_io_set,&
-                                              cp_print_key_finished_output,&
-                                              cp_print_key_unit_nr,&
-                                              debug_print_level,&
-                                              high_print_level,&
-                                              low_print_level,&
-                                              medium_print_level,&
-                                              silent_print_level
-   USE fft_tools,                       ONLY: fft3d,&
-                                              finalize_fft,&
-                                              init_fft
-   USE force_env_types,                 ONLY: multiple_fe_list
-   USE gamma,                           ONLY: deallocate_md_ftable
-   USE global_types,                    ONLY: global_environment_type
-   USE grid_api,                        ONLY: GRID_BACKEND_AUTO,&
-                                              GRID_BACKEND_CPU,&
-                                              GRID_BACKEND_DGEMM,&
-                                              GRID_BACKEND_GPU,&
-                                              GRID_BACKEND_HIP,&
-                                              GRID_BACKEND_REF
-   USE header,                          ONLY: cp2k_footer,&
-                                              cp2k_header
-   USE input_constants,                 ONLY: &
-        callgraph_all, callgraph_none, do_cosma, do_cp2k, do_dgemm_blas, do_dgemm_spla, do_eip, &
-        do_farming, do_fft_fftw3, do_fft_sg, do_fist, do_qs, do_scalapack, do_sirius, do_test, &
-        energy_run, mol_dyn_run, none_run
-   USE input_cp2k_global,               ONLY: create_global_section
-   USE input_enumeration_types,         ONLY: enum_i2c,&
-                                              enumeration_type
-   USE input_keyword_types,             ONLY: keyword_get,&
-                                              keyword_type
-   USE input_section_types,             ONLY: &
-        section_get_ival, section_get_keyword, section_get_lval, section_get_rval, &
-        section_release, section_type, section_vals_get, section_vals_get_subs_vals, &
-        section_vals_get_subs_vals3, section_vals_type, section_vals_val_get, section_vals_val_set
-   USE kinds,                           ONLY: default_path_length,&
-                                              default_string_length,&
-                                              dp,&
-                                              int_8,&
-                                              print_kind_info
-   USE local_gemm_api,                  ONLY: local_gemm_set_library
-   USE machine,                         ONLY: &
-        flush_should_flush, m_cpuid, m_cpuid_name, m_cpuid_static, m_cpuinfo, m_energy, &
-        m_get_omp_stacksize, m_memory_details, m_procrun
-   USE message_passing,                 ONLY: mp_collect_timings,&
-                                              mp_para_env_type
-   USE mp_perf_env,                     ONLY: add_mp_perf_env,&
-                                              describe_mp_perf_env,&
-                                              rm_mp_perf_env
-   USE orbital_pointers,                ONLY: deallocate_orbital_pointers,&
-                                              init_orbital_pointers
-   USE orbital_transformation_matrices, ONLY: deallocate_spherical_harmonics,&
+   USE bibliography, ONLY: Frigo2005, &
+                           Marek2014, &
+                           cite_reference
+   USE cp2k_info, ONLY: &
+      compile_arch, compile_date, compile_host, compile_revision, cp2k_flags, cp2k_home, &
+      cp2k_version, cp2k_year, get_runtime_info, r_host_name, r_pid, r_user_name
+   USE cp_error_handling, ONLY: warning_counter
+   USE cp_files, ONLY: close_file, &
+                       get_data_dir, &
+                       open_file
+   USE cp_fm_diag, ONLY: FM_DIAG_TYPE_CUSOLVER, &
+                         FM_DIAG_TYPE_ELPA, &
+                         FM_DIAG_TYPE_SCALAPACK, &
+                         FM_DIAG_TYPE_DLAF, &
+                         diag_finalize, &
+                         diag_init, &
+                         eps_check_diag_default
+   USE cp_fm_diag_utils, ONLY: cp_fm_redistribute_init
+   USE cp_fm_struct, ONLY: cp_fm_struct_config
+   USE cp_fm_types, ONLY: cp_fm_get_mm_type, &
+                          cp_fm_setup
+   USE cp_log_handling, ONLY: &
+      cp_add_default_logger, cp_get_default_logger, cp_logger_create, &
+      cp_logger_get_default_unit_nr, cp_logger_release, cp_logger_set, cp_logger_type, &
+      cp_rm_default_logger, cp_to_string
+   USE cp_output_handling, ONLY: cp_mpi_io_set, &
+                                 cp_print_key_finished_output, &
+                                 cp_print_key_unit_nr, &
+                                 debug_print_level, &
+                                 high_print_level, &
+                                 low_print_level, &
+                                 medium_print_level, &
+                                 silent_print_level
+   USE fft_tools, ONLY: fft3d, &
+                        finalize_fft, &
+                        init_fft
+   USE force_env_types, ONLY: multiple_fe_list
+   USE gamma, ONLY: deallocate_md_ftable
+   USE global_types, ONLY: global_environment_type
+   USE grid_api, ONLY: GRID_BACKEND_AUTO, &
+                       GRID_BACKEND_CPU, &
+                       GRID_BACKEND_DGEMM, &
+                       GRID_BACKEND_GPU, &
+                       GRID_BACKEND_HIP, &
+                       GRID_BACKEND_REF
+   USE header, ONLY: cp2k_footer, &
+                     cp2k_header
+   USE input_constants, ONLY: &
+      callgraph_all, callgraph_none, do_cosma, do_cp2k, do_dgemm_blas, do_dgemm_spla, do_eip, &
+      do_farming, do_fft_fftw3, do_fft_sg, do_fist, do_qs, do_scalapack, do_sirius, do_test, &
+      energy_run, mol_dyn_run, none_run
+   USE input_cp2k_global, ONLY: create_global_section
+   USE input_enumeration_types, ONLY: enum_i2c, &
+                                      enumeration_type
+   USE input_keyword_types, ONLY: keyword_get, &
+                                  keyword_type
+   USE input_section_types, ONLY: &
+      section_get_ival, section_get_keyword, section_get_lval, section_get_rval, &
+      section_release, section_type, section_vals_get, section_vals_get_subs_vals, &
+      section_vals_get_subs_vals3, section_vals_type, section_vals_val_get, section_vals_val_set
+   USE kinds, ONLY: default_path_length, &
+                    default_string_length, &
+                    dp, &
+                    int_8, &
+                    print_kind_info
+   USE local_gemm_api, ONLY: local_gemm_set_library
+   USE machine, ONLY: &
+      flush_should_flush, m_cpuid, m_cpuid_name, m_cpuid_static, m_cpuinfo, m_energy, &
+      m_get_omp_stacksize, m_memory_details, m_procrun
+   USE message_passing, ONLY: mp_collect_timings, &
+                              mp_para_env_type
+   USE mp_perf_env, ONLY: add_mp_perf_env, &
+                          describe_mp_perf_env, &
+                          rm_mp_perf_env
+   USE orbital_pointers, ONLY: deallocate_orbital_pointers, &
+                               init_orbital_pointers
+   USE orbital_transformation_matrices, ONLY: deallocate_spherical_harmonics, &
                                               init_spherical_harmonics
-   USE parallel_rng_types,              ONLY: GAUSSIAN,&
-                                              check_rng,&
-                                              rng_stream_type,&
-                                              write_rng_matrices
-   USE physcon,                         ONLY: write_physcon
-   USE reference_manager,               ONLY: collect_citations_from_ranks,&
-                                              print_all_references,&
-                                              print_format_journal
-   USE string_utilities,                ONLY: ascii_to_string,&
-                                              integer_to_string,&
-                                              string_to_ascii
-   USE timings,                         ONLY: add_timer_env,&
-                                              global_timings_level,&
-                                              rm_timer_env,&
-                                              root_cp2k_name,&
-                                              timings_setup_tracing
-   USE timings_report,                  ONLY: cost_type_energy,&
-                                              cost_type_time,&
-                                              timings_report_callgraph,&
-                                              timings_report_print
-   USE voronoi_interface,               ONLY: finalize_libvori
+   USE parallel_rng_types, ONLY: GAUSSIAN, &
+                                 check_rng, &
+                                 rng_stream_type, &
+                                 write_rng_matrices
+   USE physcon, ONLY: write_physcon
+   USE reference_manager, ONLY: collect_citations_from_ranks, &
+                                print_all_references, &
+                                print_format_journal
+   USE string_utilities, ONLY: ascii_to_string, &
+                               integer_to_string, &
+                               string_to_ascii
+   USE timings, ONLY: add_timer_env, &
+                      global_timings_level, &
+                      rm_timer_env, &
+                      root_cp2k_name, &
+                      timings_setup_tracing
+   USE timings_report, ONLY: cost_type_energy, &
+                             cost_type_time, &
+                             timings_report_callgraph, &
+                             timings_report_print
+   USE voronoi_interface, ONLY: finalize_libvori
 
 !$ USE OMP_LIB, ONLY: omp_get_max_threads, omp_get_thread_num, omp_get_num_threads
 #include "./base/base_uses.f90"
@@ -487,6 +487,8 @@ CONTAINS
 !> \param globenv ...
 !> \par History
 !>      06-2005 [created]
+!> \par History
+!>      - Add support for DLA-Future (05.09.2023, RMeli)
 !> \author MI
 !> \note
 !>      Should not be required anymore once everything is converted
@@ -509,13 +511,13 @@ CONTAINS
       CHARACTER(LEN=default_string_length), &
          DIMENSION(:), POINTER                           :: trace_routines
       INTEGER :: cpuid, cpuid_static, i_dgemm, i_diag, i_fft, i_grid_backend, iforce_eval, &
-         method_name_id, n_rep_val, nforce_eval, num_threads, output_unit, print_level, trace_max, &
-         unit_nr
+                 method_name_id, n_rep_val, nforce_eval, num_threads, output_unit, print_level, trace_max, &
+                 unit_nr
       INTEGER(kind=int_8) :: Buffers, Buffers_avr, Buffers_max, Buffers_min, Cached, Cached_avr, &
-         Cached_max, Cached_min, MemFree, MemFree_avr, MemFree_max, MemFree_min, MemLikelyFree, &
-         MemLikelyFree_avr, MemLikelyFree_max, MemLikelyFree_min, MemTotal, MemTotal_avr, &
-         MemTotal_max, MemTotal_min, Slab, Slab_avr, Slab_max, Slab_min, SReclaimable, &
-         SReclaimable_avr, SReclaimable_max, SReclaimable_min
+                             Cached_max, Cached_min, MemFree, MemFree_avr, MemFree_max, MemFree_min, MemLikelyFree, &
+                             MemLikelyFree_avr, MemLikelyFree_max, MemLikelyFree_min, MemTotal, MemTotal_avr, &
+                             MemTotal_max, MemTotal_min, Slab, Slab_avr, Slab_max, Slab_min, SReclaimable, &
+                             SReclaimable_avr, SReclaimable_max, SReclaimable_min
       INTEGER, DIMENSION(:), POINTER                     :: i_force_eval
       LOGICAL                                            :: ata, do_echo_all_hosts, efl, explicit, &
                                                             flag, report_maxloc, trace, &
@@ -546,6 +548,7 @@ CONTAINS
       unit_nr = cp_print_key_unit_nr(logger, global_section, "PRINT_ELPA", extension=".Log")
       IF (unit_nr > 0) globenv%elpa_print = .TRUE.
       CALL cp_print_key_finished_output(unit_nr, logger, global_section, "PRINT_ELPA")
+      CALL section_vals_val_get(global_section, "DLAF_NEIGVEC_MIN", i_val=globenv%dlaf_neigvec_min)
       CALL section_vals_val_get(global_section, "PREFERRED_FFT_LIBRARY", i_val=i_fft)
       CALL section_vals_val_get(global_section, "PRINT_LEVEL", i_val=print_level)
       CALL section_vals_val_get(global_section, "PROGRAM_NAME", i_val=globenv%prog_name_id)
@@ -791,6 +794,12 @@ CONTAINS
             WRITE (UNIT=output_unit, FMT="(T2,A,T71,I10)") &
                start_section_label//"| Minimum number of eigenvectors for ELPA usage", &
                globenv%elpa_neigvec_min
+         END IF
+         
+         IF (globenv%diag_library == "DLAF") THEN
+            WRITE (UNIT=output_unit, FMT="(T2,A,T71,I10)") &
+               start_section_label//"| Minimum number of eigenvectors for DLAF usage", &
+               globenv%dlaf_neigvec_min
          END IF
 
 #if defined(__CHECK_DIAG)
@@ -1065,6 +1074,7 @@ CONTAINS
                      elpa_qr=globenv%elpa_qr, &
                      elpa_print=globenv%elpa_print, &
                      elpa_qr_unsafe=globenv%elpa_qr_unsafe, &
+                     dlaf_neigvec_min_input=globenv%dlaf_neigvec_min, &
                      eps_check_diag_input=globenv%eps_check_diag)
 
       IF (fallback_applied) THEN

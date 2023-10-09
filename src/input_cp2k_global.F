@@ -209,6 +209,15 @@ CONTAINS
       CALL section_add_subsection(section, print_key)
       CALL section_release(print_key)
 
+      CALL keyword_create(keyword, __LOCATION__, name="DLAF_NEIGVEC_MIN", &
+                          description="Minimum number of eigenvectors for the use of the eigensolver from "// &
+                          "the DLAF library. The eigensolver from the ScaLAPACK library is used as fallback "// &
+                          "for all smaller cases", &
+                          usage="DLAF_NEIGVEC_MIN 512", &
+                          default_i_val=1024)
+      CALL section_add_keyword(section, keyword)
+      CALL keyword_release(keyword)
+
       CALL keyword_create( &
          keyword, __LOCATION__, name="PREFERRED_FFT_LIBRARY", &
          description="Specifies the FFT library which should be preferred. "// &

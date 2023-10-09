@@ -56,23 +56,23 @@ MODULE qs_tensors_types
 
    TYPE distribution_3d_type
       TYPE(distribution_2d_type), POINTER :: dist_2d_1 => NULL(), dist_2d_2 => NULL()
-      TYPE(mp_comm_type) :: comm_3d, comm_2d_1, comm_2d_2
-      LOGICAL :: owns_comm
+      TYPE(mp_comm_type) :: comm_3d = mp_comm_type(), comm_2d_1 = mp_comm_type(), comm_2d_2 = mp_comm_type()
+      LOGICAL :: owns_comm = .FALSE.
    END TYPE distribution_3d_type
 
    TYPE neighbor_list_3c_type
       TYPE(neighbor_list_set_p_type), DIMENSION(:), POINTER :: ij_list => NULL(), jk_list => NULL()
-      INTEGER :: sym
-      TYPE(distribution_3d_type) :: dist_3d
-      LOGICAL :: owns_dist
+      INTEGER :: sym = symmetric_none
+      TYPE(distribution_3d_type) :: dist_3d = distribution_3d_type()
+      LOGICAL :: owns_dist = .FALSE.
    END TYPE
 
    TYPE neighbor_list_3c_iterator_type
       TYPE(neighbor_list_iterator_p_type), DIMENSION(:), POINTER :: iter_ij => NULL()
       TYPE(neighbor_list_iterator_p_type), DIMENSION(:), POINTER :: iter_jk => NULL()
-      INTEGER                                                    :: iter_level
-      TYPE(neighbor_list_3c_type)                                :: ijk_nl
-      INTEGER, DIMENSION(2)                                      :: bounds_i, bounds_j, bounds_k
+      INTEGER                                                    :: iter_level = 0
+      TYPE(neighbor_list_3c_type)                                :: ijk_nl = neighbor_list_3c_type()
+      INTEGER, DIMENSION(2)                                      :: bounds_i = 0, bounds_j = 0, bounds_k = 0
    END TYPE
 
 CONTAINS
@@ -159,13 +159,15 @@ CONTAINS
 !> \param nkind ...
 !> \param particle_set ...
 !> \param mp_comm_2d MPI communicator with a 3d cartesian topology
+!> \param blacs_env_ext ...
 ! **************************************************************************************************
-   SUBROUTINE distribution_2d_create(dist_2d, dist1, dist2, nkind, particle_set, mp_comm_2d)
+   SUBROUTINE distribution_2d_create(dist_2d, dist1, dist2, nkind, particle_set, mp_comm_2d, blacs_env_ext)
       TYPE(distribution_2d_type), POINTER                :: dist_2d
       INTEGER, DIMENSION(:), INTENT(IN)                  :: dist1, dist2
       INTEGER, INTENT(IN)                                :: nkind
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
-      TYPE(mp_cart_type), INTENT(IN)                     :: mp_comm_2d
+      TYPE(mp_cart_type), INTENT(IN), OPTIONAL           :: mp_comm_2d
+      TYPE(cp_blacs_env_type), OPTIONAL, POINTER         :: blacs_env_ext
 
       CHARACTER(len=*), PARAMETER :: routineN = 'distribution_2d_create'
 
@@ -181,17 +183,26 @@ CONTAINS
 
       CALL timeset(routineN, handle)
 
-      mp_dims = mp_comm_2d%num_pe_cart
-      mp_coor = mp_comm_2d%mepos_cart
-      ALLOCATE (para_env)
-      para_env = mp_comm_2d
-      CALL cp_blacs_env_create(blacs_env, para_env, &
-                               grid_2d=mp_dims)
+      CPASSERT(PRESENT(mp_comm_2d) .OR. PRESENT(blacs_env_ext))
 
-      CPASSERT(blacs_env%mepos(1) == mp_coor(1))
-      CPASSERT(blacs_env%mepos(2) == mp_coor(2))
+      IF (PRESENT(mp_comm_2d)) THEN
+         mp_dims = mp_comm_2d%num_pe_cart
+         mp_coor = mp_comm_2d%mepos_cart
+         ALLOCATE (para_env)
+         para_env = mp_comm_2d
+         CALL cp_blacs_env_create(blacs_env, para_env, &
+                                  grid_2d=mp_dims)
 
-      CALL mp_para_env_release(para_env)
+         CPASSERT(blacs_env%mepos(1) == mp_coor(1))
+         CPASSERT(blacs_env%mepos(2) == mp_coor(2))
+         CALL mp_para_env_release(para_env)
+      END IF
+
+      IF (PRESENT(blacs_env_ext)) THEN
+         blacs_env => blacs_env_ext
+         mp_coor(1) = blacs_env%mepos(1)
+         mp_coor(2) = blacs_env%mepos(2)
+      END IF
 
       natom = SIZE(particle_set)
       ALLOCATE (dist1_prv(natom, 2), dist2_prv(natom, 2))
@@ -235,7 +246,9 @@ CONTAINS
                                       col_distribution_ptr=dist2_prv, local_rows_ptr=local_particle_row, &
                                       local_cols_ptr=local_particle_col, blacs_env=blacs_env)
 
-      CALL cp_blacs_env_release(blacs_env)
+      IF (.NOT. PRESENT(blacs_env_ext)) THEN
+         CALL cp_blacs_env_release(blacs_env)
+      END IF
 
       CALL timestop(handle)
    END SUBROUTINE

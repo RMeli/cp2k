@@ -26,6 +26,7 @@ MODULE hfx_types
                                               get_cell,&
                                               plane_distance,&
                                               scaled_to_real
+   USE cp_array_utils,                  ONLY: cp_1d_logical_p_type
    USE cp_control_types,                ONLY: dft_control_type
    USE cp_files,                        ONLY: close_file,&
                                               file_exists,&
@@ -35,6 +36,8 @@ MODULE hfx_types
    USE cp_output_handling,              ONLY: cp_print_key_finished_output,&
                                               cp_print_key_unit_nr
    USE cp_units,                        ONLY: cp_unit_from_cp2k
+   USE dbcsr_api,                       ONLY: dbcsr_release,&
+                                              dbcsr_type
    USE dbt_api,                         ONLY: &
         dbt_create, dbt_default_distvec, dbt_destroy, dbt_distribution_destroy, &
         dbt_distribution_new, dbt_distribution_type, dbt_mp_dims_create, dbt_pgrid_create, &
@@ -132,232 +135,232 @@ MODULE hfx_types
 
 ! **************************************************************************************************
    TYPE hfx_potential_type
-      INTEGER                                  :: potential_type !! 1/r/ erfc(wr)/r ...
-      REAL(dp)                                 :: omega !! w
-      REAL(dp)                                 :: scale_coulomb !! scaling factor for mixed potential
-      REAL(dp)                                 :: scale_longrange !! scaling factor for mixed potential
-      REAL(dp)                                 :: scale_gaussian !! scaling factor for mixed potential
-      REAL(dp)                                 :: cutoff_radius !! cutoff radius if cutoff potential in use
-      CHARACTER(default_path_length)           :: filename
+      INTEGER                                  :: potential_type = do_potential_coulomb !! 1/r/ erfc(wr)/r ...
+      REAL(dp)                                 :: omega = 0.0_dp !! w
+      REAL(dp)                                 :: scale_coulomb = 0.0_dp !! scaling factor for mixed potential
+      REAL(dp)                                 :: scale_longrange = 0.0_dp !! scaling factor for mixed potential
+      REAL(dp)                                 :: scale_gaussian = 0.0_dp!! scaling factor for mixed potential
+      REAL(dp)                                 :: cutoff_radius = 0.0_dp!! cutoff radius if cutoff potential in use
+      CHARACTER(default_path_length)           :: filename = ""
    END TYPE
 
 ! **************************************************************************************************
    TYPE hfx_screening_type
-      REAL(dp)                                 :: eps_schwarz !! threshold
-      REAL(dp)                                 :: eps_schwarz_forces !! threshold
-      LOGICAL                                  :: do_p_screening_forces !! screen on P^2 ?
-      LOGICAL                                  :: do_initial_p_screening !! screen on initial guess?
+      REAL(dp)                                 :: eps_schwarz = 0.0_dp !! threshold
+      REAL(dp)                                 :: eps_schwarz_forces = 0.0_dp !! threshold
+      LOGICAL                                  :: do_p_screening_forces = .FALSE. !! screen on P^2 ?
+      LOGICAL                                  :: do_initial_p_screening = .FALSE. !! screen on initial guess?
    END TYPE
 
 ! **************************************************************************************************
    TYPE hfx_memory_type
-      INTEGER                                  :: max_memory !! user def max memory MiB
-      INTEGER(int_8)                           :: max_compression_counter !! corresponding number of reals
-      INTEGER(int_8)                           :: final_comp_counter_energy
-      LOGICAL                                  :: do_all_on_the_fly !! max mem == 0 ?
-      REAL(dp)                                 :: eps_storage_scaling
-      INTEGER                                  :: cache_size
-      INTEGER                                  :: bits_max_val
-      INTEGER                                  :: actual_memory_usage
-      INTEGER                                  :: actual_memory_usage_disk
-      INTEGER(int_8)                           :: max_compression_counter_disk
-      LOGICAL                                  :: do_disk_storage
-      CHARACTER(len=default_path_length)       :: storage_location
-      INTEGER(int_8)                           :: ram_counter
-      INTEGER(int_8)                           :: ram_counter_forces
-      INTEGER(int_8)                           :: size_p_screen
-      LOGICAL                                  :: treat_forces_in_core
-      LOGICAL                                  :: recalc_forces
+      INTEGER                                  :: max_memory = 0 !! user def max memory MiB
+      INTEGER(int_8)                           :: max_compression_counter = 0_int_8 !! corresponding number of reals
+      INTEGER(int_8)                           :: final_comp_counter_energy = 0_int_8
+      LOGICAL                                  :: do_all_on_the_fly = .FALSE. !! max mem == 0 ?
+      REAL(dp)                                 :: eps_storage_scaling = 0.0_dp
+      INTEGER                                  :: cache_size = 0
+      INTEGER                                  :: bits_max_val = 0
+      INTEGER                                  :: actual_memory_usage = 0
+      INTEGER                                  :: actual_memory_usage_disk = 0
+      INTEGER(int_8)                           :: max_compression_counter_disk = 0_int_8
+      LOGICAL                                  :: do_disk_storage = .FALSE.
+      CHARACTER(len=default_path_length)       :: storage_location = ""
+      INTEGER(int_8)                           :: ram_counter = 0_int_8
+      INTEGER(int_8)                           :: ram_counter_forces = 0_int_8
+      INTEGER(int_8)                           :: size_p_screen = 0_int_8
+      LOGICAL                                  :: treat_forces_in_core = .FALSE.
+      LOGICAL                                  :: recalc_forces = .FALSE.
    END TYPE
 
 ! **************************************************************************************************
    TYPE hfx_periodic_type
-      INTEGER                                  :: number_of_shells !! number of periodic image cells
-      LOGICAL                                  :: do_periodic !! periodic ?
-      INTEGER                                  :: perd(3) !! x,xy,xyz,...
-      INTEGER                                  :: mode
-      REAL(dp)                                 :: R_max_stress
-      INTEGER                                  :: number_of_shells_from_input
+      INTEGER                                  :: number_of_shells = -1 !! number of periodic image cells
+      LOGICAL                                  :: do_periodic = .FALSE. !! periodic ?
+      INTEGER                                  :: perd(3) = -1 !! x,xy,xyz,...
+      INTEGER                                  :: mode = -1
+      REAL(dp)                                 :: R_max_stress = 0.0_dp
+      INTEGER                                  :: number_of_shells_from_input = 0
    END TYPE
 
 ! **************************************************************************************************
    TYPE hfx_load_balance_type
-      INTEGER                                  :: nbins
-      INTEGER                                  :: block_size
-      INTEGER                                  :: nblocks
-      LOGICAL                                  :: rtp_redistribute
-      LOGICAL                                  :: blocks_initialized
-      LOGICAL                                  :: do_randomize
+      INTEGER                                  :: nbins = 0
+      INTEGER                                  :: block_size = 0
+      INTEGER                                  :: nblocks = 0
+      LOGICAL                                  :: rtp_redistribute = .FALSE.
+      LOGICAL                                  :: blocks_initialized = .FALSE.
+      LOGICAL                                  :: do_randomize = .FALSE.
    END TYPE
 
 ! **************************************************************************************************
    TYPE hfx_general_type
-      REAL(dp)                                 :: fraction !! for hybrids
-      LOGICAL                                  :: treat_lsd_in_core
+      REAL(dp)                                 :: fraction = 0.0_dp !! for hybrids
+      LOGICAL                                  :: treat_lsd_in_core = .FALSE.
    END TYPE
 
 ! **************************************************************************************************
    TYPE hfx_cell_type
-      REAL(dp)                                 :: cell(3)
-      REAL(dp)                                 :: cell_r(3)
+      REAL(dp)                                 :: cell(3) = 0.0_dp
+      REAL(dp)                                 :: cell_r(3) = 0.0_dp
    END TYPE
 
 ! **************************************************************************************************
    TYPE hfx_distribution
-      INTEGER(int_8)                           :: istart
-      INTEGER(int_8)                           :: number_of_atom_quartets
-      INTEGER(int_8)                           :: cost
-      REAL(KIND=dp)                            :: time_first_scf
-      REAL(KIND=dp)                            :: time_other_scf
-      REAL(KIND=dp)                            :: time_forces
-      INTEGER(int_8)                           :: ram_counter
+      INTEGER(int_8)                           :: istart = 0_int_8
+      INTEGER(int_8)                           :: number_of_atom_quartets = 0_int_8
+      INTEGER(int_8)                           :: cost = 0_int_8
+      REAL(KIND=dp)                            :: time_first_scf = 0.0_dp
+      REAL(KIND=dp)                            :: time_other_scf = 0.0_dp
+      REAL(KIND=dp)                            :: time_forces = 0.0_dp
+      INTEGER(int_8)                           :: ram_counter = 0_int_8
    END TYPE
 
 ! **************************************************************************************************
    TYPE pair_list_element_type
-      INTEGER, DIMENSION(2) :: pair
-      INTEGER, DIMENSION(2) :: set_bounds
-      INTEGER, DIMENSION(2) :: kind_pair
-      REAL(KIND=dp)         :: r1(3), r2(3)
-      REAL(KIND=dp)         :: dist2
+      INTEGER, DIMENSION(2) :: pair = 0
+      INTEGER, DIMENSION(2) :: set_bounds = 0
+      INTEGER, DIMENSION(2) :: kind_pair = 0
+      REAL(KIND=dp)         :: r1(3) = 0.0_dp, r2(3) = 0.0_dp
+      REAL(KIND=dp)         :: dist2 = 0.0_dp
    END TYPE
 
    ! **************************************************************************************************
    TYPE pair_set_list_type
-      INTEGER, DIMENSION(2) :: pair
+      INTEGER, DIMENSION(2) :: pair = 0
    END TYPE
 
 ! **************************************************************************************************
    TYPE pair_list_type
-      TYPE(pair_list_element_type), DIMENSION(max_atom_block**2) :: elements
-      INTEGER :: n_element
+      TYPE(pair_list_element_type), DIMENSION(max_atom_block**2) :: elements = pair_list_element_type()
+      INTEGER :: n_element = 0
    END TYPE pair_list_type
 
 ! **************************************************************************************************
    TYPE hfx_cache_type
-      INTEGER(int_8), DIMENSION(CACHE_SIZE)    :: DATA
-      INTEGER                                  :: element_counter
+      INTEGER(int_8), DIMENSION(CACHE_SIZE)    :: DATA = 0_int_8
+      INTEGER                                  :: element_counter = 0
    END TYPE
 
 ! **************************************************************************************************
    TYPE hfx_container_node
-      TYPE(hfx_container_node), POINTER        :: next, prev
-      INTEGER(int_8), DIMENSION(CACHE_SIZE)    :: DATA
+      TYPE(hfx_container_node), POINTER        :: next => NULL(), prev => NULL()
+      INTEGER(int_8), DIMENSION(CACHE_SIZE)    :: DATA = 0_int_8
    END TYPE
 
 ! **************************************************************************************************
    TYPE hfx_container_type
-      TYPE(hfx_container_node), POINTER        :: first, current
-      INTEGER                                  :: element_counter
-      INTEGER(int_8)                           :: file_counter
-      CHARACTER(LEN=5)                         :: desc
-      INTEGER                                  :: unit
-      CHARACTER(default_path_length)           :: filename
+      TYPE(hfx_container_node), POINTER        :: first => NULL(), current => NULL()
+      INTEGER                                  :: element_counter = 0
+      INTEGER(int_8)                           :: file_counter = 0
+      CHARACTER(LEN=5)                         :: desc = ""
+      INTEGER                                  :: unit = -1
+      CHARACTER(default_path_length)           :: filename = ""
    END TYPE
 
 ! **************************************************************************************************
    TYPE hfx_basis_type
-      INTEGER, DIMENSION(:), POINTER           :: lmax
-      INTEGER, DIMENSION(:), POINTER           :: lmin
-      INTEGER, DIMENSION(:), POINTER           :: npgf
-      INTEGER                                  :: nset
-      REAL(dp), DIMENSION(:, :), POINTER        :: zet
-      INTEGER, DIMENSION(:), POINTER           :: nsgf
-      INTEGER, DIMENSION(:, :), POINTER         :: first_sgf
-      REAL(dp), DIMENSION(:, :), POINTER        :: sphi
-      INTEGER                                  :: nsgf_total
-      INTEGER, DIMENSION(:, :), POINTER         :: nl
-      INTEGER, DIMENSION(:, :), POINTER         :: nsgfl
-      INTEGER, DIMENSION(:), POINTER           :: nshell
+      INTEGER, DIMENSION(:), POINTER           :: lmax => NULL()
+      INTEGER, DIMENSION(:), POINTER           :: lmin => NULL()
+      INTEGER, DIMENSION(:), POINTER           :: npgf => NULL()
+      INTEGER                                  :: nset = 0
+      REAL(dp), DIMENSION(:, :), POINTER        :: zet => NULL()
+      INTEGER, DIMENSION(:), POINTER           :: nsgf => NULL()
+      INTEGER, DIMENSION(:, :), POINTER         :: first_sgf => NULL()
+      REAL(dp), DIMENSION(:, :), POINTER        :: sphi => NULL()
+      INTEGER                                  :: nsgf_total = 0
+      INTEGER, DIMENSION(:, :), POINTER         :: nl => NULL()
+      INTEGER, DIMENSION(:, :), POINTER         :: nsgfl => NULL()
+      INTEGER, DIMENSION(:), POINTER           :: nshell => NULL()
       REAL(dp), DIMENSION(:, :, :, :), POINTER &
-         :: sphi_ext
-      REAL(dp), DIMENSION(:), POINTER          :: set_radius
-      REAL(dp), DIMENSION(:, :), POINTER        :: pgf_radius
-      REAL(dp)                                 :: kind_radius
+         :: sphi_ext => NULL()
+      REAL(dp), DIMENSION(:), POINTER          :: set_radius => NULL()
+      REAL(dp), DIMENSION(:, :), POINTER        :: pgf_radius => NULL()
+      REAL(dp)                                 :: kind_radius = 0.0_dp
    END TYPE
 
 ! **************************************************************************************************
    TYPE hfx_basis_info_type
-      INTEGER                                  :: max_set
-      INTEGER                                  :: max_sgf
-      INTEGER                                  :: max_am
+      INTEGER                                  :: max_set = 0
+      INTEGER                                  :: max_sgf = 0
+      INTEGER                                  :: max_am = 0
    END TYPE
 
 ! **************************************************************************************************
    TYPE hfx_screen_coeff_type
-      REAL(dp)                                 :: x(2)
+      REAL(dp)                                 :: x(2) = 0.0_dp
    END TYPE
 
 ! **************************************************************************************************
    TYPE hfx_p_kind
-      REAL(dp), DIMENSION(:, :, :, :), POINTER    :: p_kind
+      REAL(dp), DIMENSION(:, :, :, :), POINTER    :: p_kind => NULL()
    END TYPE
 
 ! **************************************************************************************************
    TYPE hfx_2D_map
-      INTEGER, DIMENSION(:), POINTER           :: iatom_list
-      INTEGER, DIMENSION(:), POINTER           :: jatom_list
+      INTEGER, DIMENSION(:), POINTER           :: iatom_list => NULL()
+      INTEGER, DIMENSION(:), POINTER           :: jatom_list => NULL()
    END TYPE
 
 ! **************************************************************************************************
    TYPE hfx_pgf_image
-      REAL(dp)                                 :: ra(3), rb(3)
-      REAL(dp)                                 :: rab2
-      REAL(dp)                                 :: S1234
-      REAL(dp)                                 :: P(3)
-      REAL(dp)                                 :: R
-      REAL(dp)                                 :: pgf_max
-      REAL(dp), DIMENSION(3)                   :: bcell
+      REAL(dp)                                 :: ra(3) = 0.0_dp, rb(3) = 0.0_dp
+      REAL(dp)                                 :: rab2 = 0.0_dp
+      REAL(dp)                                 :: S1234 = 0.0_dp
+      REAL(dp)                                 :: P(3) = 0.0_dp
+      REAL(dp)                                 :: R = 0.0_dp
+      REAL(dp)                                 :: pgf_max = 0.0_dp
+      REAL(dp), DIMENSION(3)                   :: bcell = 0.0_dp
    END TYPE
 
 ! **************************************************************************************************
    TYPE hfx_pgf_list
       TYPE(hfx_pgf_image), DIMENSION(:), POINTER &
-         :: image_list
-      INTEGER                                  :: nimages
-      REAL(dp)                                 :: zetapzetb
-      REAL(dp)                                 :: ZetaInv
-      REAL(dp)                                 :: zeta, zetb
-      INTEGER                                  :: ipgf, jpgf
+         :: image_list => NULL()
+      INTEGER                                  :: nimages = 0
+      REAL(dp)                                 :: zetapzetb = 0.0_dp
+      REAL(dp)                                 :: ZetaInv = 0.0_dp
+      REAL(dp)                                 :: zeta = 0.0_dp, zetb = 0.0_dp
+      INTEGER                                  :: ipgf = 0, jpgf = 0
    END TYPE
 
 ! **************************************************************************************************
    TYPE hfx_pgf_product_list
-      REAL(dp)                                 :: ra(3), rb(3), rc(3), rd(3)
-      REAL(dp)                                 :: ZetapEtaInv
-      REAL(dp)                                 :: Rho, RhoInv
-      REAL(dp)                                 :: P(3), Q(3), W(3)
-      REAL(dp)                                 :: AB(3), CD(3)
-      REAL(dp)                                 :: Fm(prim_data_f_size)
+      REAL(dp)                                 :: ra(3) = 0.0_dp, rb(3) = 0.0_dp, rc(3) = 0.0_dp, rd(3) = 0.0_dp
+      REAL(dp)                                 :: ZetapEtaInv = 0.0_dp
+      REAL(dp)                                 :: Rho = 0.0_dp, RhoInv = 0.0_dp
+      REAL(dp)                                 :: P(3) = 0.0_dp, Q(3) = 0.0_dp, W(3) = 0.0_dp
+      REAL(dp)                                 :: AB(3) = 0.0_dp, CD(3) = 0.0_dp
+      REAL(dp)                                 :: Fm(prim_data_f_size) = 0.0_dp
    END TYPE
 
 ! **************************************************************************************************
    TYPE hfx_block_range_type
-      INTEGER        :: istart, iend
-      INTEGER(int_8) :: cost
+      INTEGER        :: istart = 0, iend = 0
+      INTEGER(int_8) :: cost = 0_int_8
    END TYPE
 
 ! **************************************************************************************************
    TYPE hfx_task_list_type
-      INTEGER                                  :: thread_id
-      INTEGER                                  :: bin_id
-      INTEGER(int_8)                           :: cost
+      INTEGER                                  :: thread_id = 0
+      INTEGER                                  :: bin_id = 0
+      INTEGER(int_8)                           :: cost = 0_int_8
    END TYPE
 
    TYPE :: hfx_compression_type
       TYPE(hfx_container_type), DIMENSION(:), &
-         POINTER        :: maxval_container
+         POINTER        :: maxval_container => NULL()
       TYPE(hfx_cache_type), DIMENSION(:), &
-         POINTER            :: maxval_cache
+         POINTER            :: maxval_cache => NULL()
       TYPE(hfx_container_type), DIMENSION(:, :), &
-         POINTER        :: integral_containers
+         POINTER        :: integral_containers => NULL()
       TYPE(hfx_cache_type), DIMENSION(:, :), &
-         POINTER            :: integral_caches
-      TYPE(hfx_container_type), POINTER :: maxval_container_disk
-      TYPE(hfx_cache_type)     :: maxval_cache_disk
-      TYPE(hfx_cache_type)      :: integral_caches_disk(64)
+         POINTER            :: integral_caches => NULL()
+      TYPE(hfx_container_type), POINTER :: maxval_container_disk => NULL()
+      TYPE(hfx_cache_type)     :: maxval_cache_disk = hfx_cache_type()
+      TYPE(hfx_cache_type)      :: integral_caches_disk(64) = hfx_cache_type()
       TYPE(hfx_container_type), POINTER, &
-         DIMENSION(:)  :: integral_containers_disk
+         DIMENSION(:)  :: integral_containers_disk => NULL()
    END TYPE
 
    TYPE :: block_ind_type
@@ -366,32 +369,48 @@ MODULE hfx_types
 
    TYPE hfx_ri_type
       ! input parameters (see input_cp2k_hfx)
-      REAL(KIND=dp) :: filter_eps, filter_eps_2c, filter_eps_storage, filter_eps_mo, &
-                       eps_lanczos, eps_pgf_orb, eps_eigval
-      INTEGER :: t2c_sqrt_order, max_iter_lanczos, flavor, unit_nr_dbcsr, unit_nr, &
-                 min_bsize, max_bsize_MO, t2c_method, nelectron_total, input_flavor
-      LOGICAL :: check_2c_inv, calc_condnum
+      REAL(KIND=dp) :: filter_eps = 0.0_dp, filter_eps_2c = 0.0_dp, filter_eps_storage = 0.0_dp, filter_eps_mo = 0.0_dp, &
+                       eps_lanczos = 0.0_dp, eps_pgf_orb = 0.0_dp, eps_eigval = 0.0_dp, kp_RI_range = 0.0_dp, &
+                       kp_image_range = 0.0_dp, kp_bump_rad = 0.0_dp
+      INTEGER :: t2c_sqrt_order = 0, max_iter_lanczos = 0, flavor = 0, unit_nr_dbcsr = -1, unit_nr = -1, &
+                 min_bsize = 0, max_bsize_MO = 0, t2c_method = 0, nelectron_total = 0, input_flavor = 0, &
+                 ncell_RI = 0, nimg = 0, kp_stack_size = 0, nimg_nze = 0
+      LOGICAL :: check_2c_inv = .FALSE., calc_condnum = .FALSE.
 
-      TYPE(libint_potential_type) :: ri_metric
+      TYPE(libint_potential_type) :: ri_metric = libint_potential_type()
 
       ! input parameters from hfx
-      TYPE(libint_potential_type) :: hfx_pot ! interaction potential
-      REAL(KIND=dp) :: eps_schwarz ! integral screening threshold
-      REAL(KIND=dp) :: eps_schwarz_forces ! integral derivatives screening threshold
+      TYPE(libint_potential_type) :: hfx_pot = libint_potential_type() ! interaction potential
+      REAL(KIND=dp) :: eps_schwarz = 0.0_dp ! integral screening threshold
+      REAL(KIND=dp) :: eps_schwarz_forces = 0.0_dp ! integral derivatives screening threshold
 
-      LOGICAL :: same_op ! whether RI operator is same as HF potential
+      LOGICAL :: same_op = .FALSE. ! whether RI operator is same as HF potential
 
       ! default process grid used for 3c tensors
       TYPE(dbt_pgrid_type), POINTER :: pgrid => NULL()
       TYPE(dbt_pgrid_type), POINTER :: pgrid_2d => NULL()
 
       ! distributions for (RI | AO AO) 3c integral tensor (non split)
-      TYPE(distribution_3d_type) :: dist_3d
+      TYPE(distribution_3d_type) :: dist_3d = distribution_3d_type()
       TYPE(dbt_distribution_type) :: dist
 
       ! block sizes for RI and AO tensor dimensions (split)
       INTEGER, DIMENSION(:), ALLOCATABLE :: bsizes_RI, bsizes_AO, bsizes_RI_split, bsizes_AO_split, &
                                             bsizes_RI_fit, bsizes_AO_fit
+
+      ! KP RI-HFX basis info
+      INTEGER, DIMENSION(:), ALLOCATABLE ::  img_to_RI_cell, present_images, idx_to_img, img_to_idx, &
+                                            RI_cell_to_img
+
+      ! KP RI-HFX cost information for a given atom pair i,j at a given cell b
+      REAL(dp), DIMENSION(:, :, :), ALLOCATABLE :: kp_cost
+
+      ! KP distribution of iatom (of i,j atom pairs) to subgroups
+      TYPE(cp_1d_logical_p_type), DIMENSION(:), ALLOCATABLE :: iatom_to_subgroup
+
+      ! KP 3c tensors replicated on the subgroups
+      TYPE(dbt_type), DIMENSION(:), ALLOCATABLE :: kp_t_3c_int
+      TYPE(dbt_type), DIMENSION(:, :), ALLOCATABLE :: kp_t_3c_apc
 
       ! Note: changed static DIMENSION(1,1) of dbt_type to allocatables as workaround for gfortran 8.3.0,
       ! with static dimension gfortran gets stuck during compilation
@@ -399,6 +418,9 @@ MODULE hfx_types
       ! 2c tensors in (RI | RI) format for forces
       TYPE(dbt_type), DIMENSION(:, :), ALLOCATABLE    :: t_2c_inv
       TYPE(dbt_type), DIMENSION(:, :), ALLOCATABLE    :: t_2c_pot
+
+      ! 2c tensor in matrix format for K-points RI-HFX
+      TYPE(dbcsr_type), DIMENSION(:, :), ALLOCATABLE  :: kp_mat_2c_pot
 
       ! 2c tensor in (RI | RI) format for contraction
       TYPE(dbt_type), DIMENSION(:, :), ALLOCATABLE    :: t_2c_int
@@ -427,10 +449,10 @@ MODULE hfx_types
       TYPE(section_vals_type), POINTER :: ri_section => NULL(), hfx_section => NULL()
 
       ! types of primary and auxiliary basis
-      CHARACTER(len=default_string_length) :: orb_basis_type, ri_basis_type
+      CHARACTER(len=default_string_length) :: orb_basis_type = "", ri_basis_type = ""
 
       ! memory reduction factor
-      INTEGER :: n_mem_input, n_mem, n_mem_RI, n_mem_flavor_switch
+      INTEGER :: n_mem_input = 0, n_mem = 0, n_mem_RI = 0, n_mem_flavor_switch = 0
 
       ! offsets for memory batches
       INTEGER, DIMENSION(:), ALLOCATABLE :: starts_array_mem_block, ends_array_mem_block
@@ -439,9 +461,9 @@ MODULE hfx_types
       INTEGER, DIMENSION(:), ALLOCATABLE :: starts_array_RI_mem_block, ends_array_RI_mem_block
       INTEGER, DIMENSION(:), ALLOCATABLE :: starts_array_RI_mem, ends_array_RI_mem
 
-      INTEGER(int_8) :: dbcsr_nflop
-      REAL(dp)       :: dbcsr_time
-      INTEGER        :: num_pe
+      INTEGER(int_8) :: dbcsr_nflop = 0_int_8
+      REAL(dp)       :: dbcsr_time = 0.0_dp
+      INTEGER        :: num_pe = 0
       TYPE(hfx_compression_type), DIMENSION(:, :), ALLOCATABLE :: store_3c
 
    END TYPE
@@ -482,59 +504,59 @@ MODULE hfx_types
 !> \author Manuel Guidon
 ! **************************************************************************************************
    TYPE hfx_type
-      TYPE(hfx_potential_type)                 :: potential_parameter
-      TYPE(hfx_screening_type)                 :: screening_parameter
-      TYPE(hfx_memory_type)                    :: memory_parameter
-      TYPE(hfx_periodic_type)                  :: periodic_parameter
-      TYPE(hfx_load_balance_type)              :: load_balance_parameter
-      TYPE(hfx_general_type)                   :: general_parameter
+      TYPE(hfx_potential_type)                 :: potential_parameter = hfx_potential_type()
+      TYPE(hfx_screening_type)                 :: screening_parameter = hfx_screening_type()
+      TYPE(hfx_memory_type)                    :: memory_parameter = hfx_memory_type()
+      TYPE(hfx_periodic_type)                  :: periodic_parameter = hfx_periodic_type()
+      TYPE(hfx_load_balance_type)              :: load_balance_parameter = hfx_load_balance_type()
+      TYPE(hfx_general_type)                   :: general_parameter = hfx_general_type()
 
-      TYPE(hfx_compression_type) :: store_ints
-      TYPE(hfx_compression_type) :: store_forces
+      TYPE(hfx_compression_type) :: store_ints = hfx_compression_type()
+      TYPE(hfx_compression_type) :: store_forces = hfx_compression_type()
 
       TYPE(hfx_cell_type), DIMENSION(:), &
-         POINTER                       :: neighbor_cells
+         POINTER                       :: neighbor_cells => NULL()
       TYPE(hfx_distribution), DIMENSION(:), &
-         POINTER         :: distribution_energy
+         POINTER         :: distribution_energy => NULL()
       TYPE(hfx_distribution), DIMENSION(:), &
-         POINTER         :: distribution_forces
-      INTEGER, DIMENSION(:, :), POINTER         :: is_assoc_atomic_block
-      INTEGER                                  :: number_of_p_entries
+         POINTER         :: distribution_forces => NULL()
+      INTEGER, DIMENSION(:, :), POINTER         :: is_assoc_atomic_block => NULL()
+      INTEGER                                  :: number_of_p_entries = 0
       TYPE(hfx_basis_type), DIMENSION(:), &
-         POINTER           :: basis_parameter
-      INTEGER                                  :: n_rep_hf
-      LOGICAL                                  :: b_first_load_balance_energy, &
-                                                  b_first_load_balance_forces
-      REAL(dp), DIMENSION(:, :), POINTER        :: full_ks_alpha
-      REAL(dp), DIMENSION(:, :), POINTER        :: full_ks_beta
+         POINTER           :: basis_parameter => NULL()
+      INTEGER                                  :: n_rep_hf = 0
+      LOGICAL                                  :: b_first_load_balance_energy = .FALSE., &
+                                                  b_first_load_balance_forces = .FALSE.
+      REAL(dp), DIMENSION(:, :), POINTER        :: full_ks_alpha => NULL()
+      REAL(dp), DIMENSION(:, :), POINTER        :: full_ks_beta => NULL()
       TYPE(cp_libint_t)                        :: lib
-      TYPE(hfx_basis_info_type)                :: basis_info
+      TYPE(hfx_basis_info_type)                :: basis_info = hfx_basis_info_type()
       TYPE(hfx_screen_coeff_type), &
-         DIMENSION(:, :, :, :, :, :), POINTER     :: screen_funct_coeffs_pgf, &
-                                                     pair_dist_radii_pgf
+         DIMENSION(:, :, :, :, :, :), POINTER     :: screen_funct_coeffs_pgf => NULL(), &
+                                                     pair_dist_radii_pgf => NULL()
       TYPE(hfx_screen_coeff_type), &
-         DIMENSION(:, :, :, :), POINTER         :: screen_funct_coeffs_set
+         DIMENSION(:, :, :, :), POINTER         :: screen_funct_coeffs_set => NULL()
       TYPE(hfx_screen_coeff_type), &
-         DIMENSION(:, :), POINTER             :: screen_funct_coeffs_kind
-      LOGICAL                                  :: screen_funct_is_initialized
-      TYPE(hfx_p_kind), DIMENSION(:), POINTER  :: initial_p
-      TYPE(hfx_p_kind), DIMENSION(:), POINTER  :: initial_p_forces
-      INTEGER, DIMENSION(:), POINTER           :: map_atom_to_kind_atom
-      TYPE(hfx_2D_map), DIMENSION(:), POINTER  :: map_atoms_to_cpus
-      INTEGER, DIMENSION(:, :), POINTER         :: atomic_block_offset
-      INTEGER, DIMENSION(:, :, :, :), POINTER     :: set_offset
-      INTEGER, DIMENSION(:), POINTER           :: block_offset
+         DIMENSION(:, :), POINTER             :: screen_funct_coeffs_kind => NULL()
+      LOGICAL                                  :: screen_funct_is_initialized = .FALSE.
+      TYPE(hfx_p_kind), DIMENSION(:), POINTER  :: initial_p => NULL()
+      TYPE(hfx_p_kind), DIMENSION(:), POINTER  :: initial_p_forces => NULL()
+      INTEGER, DIMENSION(:), POINTER           :: map_atom_to_kind_atom => NULL()
+      TYPE(hfx_2D_map), DIMENSION(:), POINTER  :: map_atoms_to_cpus => NULL()
+      INTEGER, DIMENSION(:, :), POINTER         :: atomic_block_offset => NULL()
+      INTEGER, DIMENSION(:, :, :, :), POINTER     :: set_offset => NULL()
+      INTEGER, DIMENSION(:), POINTER           :: block_offset => NULL()
       TYPE(hfx_block_range_type), DIMENSION(:), &
-         POINTER      :: blocks
+         POINTER      :: blocks => NULL()
       TYPE(hfx_task_list_type), DIMENSION(:), &
-         POINTER        :: task_list
-      REAL(dp), DIMENSION(:, :), POINTER        :: pmax_atom, pmax_atom_forces
+         POINTER        :: task_list => NULL()
+      REAL(dp), DIMENSION(:, :), POINTER        :: pmax_atom => NULL(), pmax_atom_forces => NULL()
       TYPE(cp_libint_t)                         :: lib_deriv
-      REAL(dp), DIMENSION(:, :), POINTER        :: pmax_block
-      LOGICAL, DIMENSION(:, :), POINTER         :: atomic_pair_list
-      LOGICAL, DIMENSION(:, :), POINTER         :: atomic_pair_list_forces
-      LOGICAL                                   :: do_hfx_ri
-      TYPE(hfx_ri_type), POINTER                :: ri_data
+      REAL(dp), DIMENSION(:, :), POINTER        :: pmax_block => NULL()
+      LOGICAL, DIMENSION(:, :), POINTER         :: atomic_pair_list => NULL()
+      LOGICAL, DIMENSION(:, :), POINTER         :: atomic_pair_list_forces => NULL()
+      LOGICAL                                   :: do_hfx_ri = .FALSE.
+      TYPE(hfx_ri_type), POINTER                :: ri_data => NULL()
    END TYPE hfx_type
 
 CONTAINS
@@ -551,6 +573,7 @@ CONTAINS
 !> \param cell ...
 !> \param do_exx ...
 !> \param nelectron_total ...
+!> \param nkp_grid ...
 !> \par History
 !>      09.2007 created [Manuel Guidon]
 !> \author Manuel Guidon
@@ -559,7 +582,7 @@ CONTAINS
 !>        unknown at invocation time
 ! **************************************************************************************************
    SUBROUTINE hfx_create(x_data, para_env, hfx_section, atomic_kind_set, qs_kind_set, &
-                         particle_set, dft_control, cell, do_exx, nelectron_total)
+                         particle_set, dft_control, cell, do_exx, nelectron_total, nkp_grid)
       TYPE(hfx_type), DIMENSION(:, :), POINTER           :: x_data
       TYPE(mp_para_env_type)                             :: para_env
       TYPE(section_vals_type), POINTER                   :: hfx_section
@@ -570,6 +593,7 @@ CONTAINS
       TYPE(cell_type), POINTER                           :: cell
       LOGICAL, OPTIONAL                                  :: do_exx
       INTEGER, OPTIONAL                                  :: nelectron_total
+      INTEGER, DIMENSION(3), OPTIONAL                    :: nkp_grid
 
       CHARACTER(LEN=*), PARAMETER                        :: routineN = 'hfx_create'
 
@@ -679,6 +703,9 @@ CONTAINS
                CALL erfc_cutoff(actual_x_data%screening_parameter%eps_schwarz, &
                                 actual_x_data%potential_parameter%omega, &
                                 actual_x_data%potential_parameter%cutoff_radius)
+            END IF
+            IF (actual_x_data%potential_parameter%potential_type == do_potential_id) THEN
+               actual_x_data%potential_parameter%cutoff_radius = 0.0_dp
             END IF
 
             !! LOAD_BALANCE section
@@ -820,7 +847,7 @@ CONTAINS
                CALL section_vals_val_get(hf_pbc_section, "NUMBER_OF_SHELLS", i_val=pbc_shells)
                actual_x_data%periodic_parameter%number_of_shells_from_input = pbc_shells
                ALLOCATE (actual_x_data%neighbor_cells(1))
-               CALL hfx_create_neighbor_cells(actual_x_data, pbc_shells, cell, i_thread)
+               CALL hfx_create_neighbor_cells(actual_x_data, pbc_shells, cell, i_thread, nkp_grid=nkp_grid)
             ELSE
                ALLOCATE (actual_x_data%neighbor_cells(1))
                ! ** Initialize this guy to enable non periodic stress regtests
@@ -1111,6 +1138,10 @@ CONTAINS
          IF (.NOT. explicit) THEN
             ri_metric%cutoff_radius = hfx_pot%cutoff_radius
          END IF
+
+         IF (ri_metric%potential_type == do_potential_short) &
+            CALL erfc_cutoff(ri_data%eps_schwarz, ri_metric%omega, ri_metric%cutoff_radius)
+         IF (ri_metric%potential_type == do_potential_id) ri_metric%cutoff_radius = 0.0_dp
       END ASSOCIATE
 
       CALL section_vals_val_get(ri_section, "2C_MATRIX_FUNCTIONS", i_val=ri_data%t2c_method)
@@ -1391,11 +1422,11 @@ CONTAINS
                  dbcsr_time => ri_data%dbcsr_time, num_pe => ri_data%num_pe)
          my_flop_rate = REAL(dbcsr_nflop, dp)/(1.0E09_dp*ri_data%dbcsr_time)
          IF (unit_nr > 0) WRITE (UNIT=unit_nr, FMT="(/T2,A,T73,ES8.2)") &
-            "RI-HFX PERFORMANCE| DBCSR total number of flops:", REAL(dbcsr_nflop*num_pe, dp)
+            "RI-HFX PERFORMANCE| DBT total number of flops:", REAL(dbcsr_nflop*num_pe, dp)
          IF (unit_nr > 0) WRITE (UNIT=unit_nr, FMT="(T2,A,T66,F15.2)") &
-            "RI-HFX PERFORMANCE| DBCSR total execution time:", dbcsr_time
+            "RI-HFX PERFORMANCE| DBT total execution time:", dbcsr_time
          IF (unit_nr > 0) WRITE (UNIT=unit_nr, FMT="(T2,A,T66,F15.2)") &
-            "RI-HFX PERFORMANCE| DBCSR flop rate (Gflops / MPI rank):", my_flop_rate
+            "RI-HFX PERFORMANCE| DBT flop rate (Gflops / MPI rank):", my_flop_rate
       END ASSOCIATE
    END SUBROUTINE
 
@@ -1410,7 +1441,7 @@ CONTAINS
 
       CHARACTER(LEN=*), PARAMETER                        :: routineN = 'hfx_ri_release'
 
-      INTEGER                                            :: handle, i_mem, ispin, j_mem, unused
+      INTEGER                                            :: handle, i, i_mem, ispin, j, j_mem, unused
       LOGICAL                                            :: my_write_stats
 
       CALL timeset(routineN, handle)
@@ -1455,14 +1486,35 @@ CONTAINS
             CALL dealloc_containers(ri_data%store_3c(i_mem, j_mem), unused)
          END DO
          END DO
-         CALL dbt_destroy(ri_data%t_3c_int_ctr_1(1, 1))
+
+         DO j = 1, SIZE(ri_data%t_3c_int_ctr_1, 2)
+            DO i = 1, SIZE(ri_data%t_3c_int_ctr_1, 1)
+               CALL dbt_destroy(ri_data%t_3c_int_ctr_1(i, j))
+            END DO
+         END DO
          DEALLOCATE (ri_data%t_3c_int_ctr_1)
-         CALL dbt_destroy(ri_data%t_3c_int_ctr_2(1, 1))
+
+         DO j = 1, SIZE(ri_data%t_3c_int_ctr_2, 2)
+            DO i = 1, SIZE(ri_data%t_3c_int_ctr_2, 1)
+               CALL dbt_destroy(ri_data%t_3c_int_ctr_2(i, j))
+            END DO
+         END DO
          DEALLOCATE (ri_data%t_3c_int_ctr_2)
-         CALL dbt_destroy(ri_data%t_3c_int_ctr_3(1, 1))
+
+         DO j = 1, SIZE(ri_data%t_3c_int_ctr_3, 2)
+            DO i = 1, SIZE(ri_data%t_3c_int_ctr_3, 1)
+               CALL dbt_destroy(ri_data%t_3c_int_ctr_3(i, j))
+            END DO
+         END DO
          DEALLOCATE (ri_data%t_3c_int_ctr_3)
-         CALL dbt_destroy(ri_data%t_2c_int(1, 1))
+
+         DO j = 1, SIZE(ri_data%t_2c_int, 2)
+            DO i = 1, SIZE(ri_data%t_2c_int, 1)
+               CALL dbt_destroy(ri_data%t_2c_int(i, j))
+            END DO
+         END DO
          DEALLOCATE (ri_data%t_2c_int)
+
          DEALLOCATE (ri_data%starts_array_mem_block, ri_data%ends_array_mem_block, &
                      ri_data%starts_array_mem, ri_data%ends_array_mem)
          DEALLOCATE (ri_data%starts_array_RI_mem_block, ri_data%ends_array_RI_mem_block, &
@@ -1492,10 +1544,51 @@ CONTAINS
          DEALLOCATE (ri_data%t_3c_ctr_KS_copy)
       END IF
 
-      CALL dbt_destroy(ri_data%t_2c_inv(1, 1))
+      DO j = 1, SIZE(ri_data%t_2c_inv, 2)
+         DO i = 1, SIZE(ri_data%t_2c_inv, 1)
+            CALL dbt_destroy(ri_data%t_2c_inv(i, j))
+         END DO
+      END DO
       DEALLOCATE (ri_data%t_2c_inv)
-      CALL dbt_destroy(ri_data%t_2c_pot(1, 1))
+
+      DO j = 1, SIZE(ri_data%t_2c_pot, 2)
+         DO i = 1, SIZE(ri_data%t_2c_pot, 1)
+            CALL dbt_destroy(ri_data%t_2c_pot(i, j))
+         END DO
+      END DO
       DEALLOCATE (ri_data%t_2c_pot)
+
+      IF (ALLOCATED(ri_data%kp_mat_2c_pot)) THEN
+         DO j = 1, SIZE(ri_data%kp_mat_2c_pot, 2)
+            DO i = 1, SIZE(ri_data%kp_mat_2c_pot, 1)
+               CALL dbcsr_release(ri_data%kp_mat_2c_pot(i, j))
+            END DO
+         END DO
+         DEALLOCATE (ri_data%kp_mat_2c_pot)
+      END IF
+
+      IF (ALLOCATED(ri_data%kp_t_3c_int)) THEN
+         DO i = 1, SIZE(ri_data%kp_t_3c_int)
+            CALL dbt_destroy(ri_data%kp_t_3c_int(i))
+         END DO
+         DEALLOCATE (ri_data%kp_t_3c_int)
+      END IF
+
+      IF (ALLOCATED(ri_data%kp_t_3c_apc)) THEN
+         DO j = 1, SIZE(ri_data%kp_t_3c_apc, 2)
+            DO i = 1, SIZE(ri_data%kp_t_3c_apc, 1)
+               CALL dbt_destroy(ri_data%kp_t_3c_apc(i, j))
+            END DO
+         END DO
+         DEALLOCATE (ri_data%kp_t_3c_apc)
+      END IF
+
+      IF (ALLOCATED(ri_data%iatom_to_subgroup)) THEN
+         DO i = 1, SIZE(ri_data%iatom_to_subgroup)
+            DEALLOCATE (ri_data%iatom_to_subgroup(i)%array)
+         END DO
+         DEALLOCATE (ri_data%iatom_to_subgroup)
+      END IF
 
       CALL timestop(handle)
    END SUBROUTINE
@@ -1907,28 +2000,35 @@ CONTAINS
 !> \param pbc_shells number of shells taken into account
 !> \param cell cell
 !> \param i_thread current thread ID
+!> \param nkp_grid ...
 !> \par History
 !>      09.2007 created [Manuel Guidon]
 !> \author Manuel Guidon
 ! **************************************************************************************************
-   SUBROUTINE hfx_create_neighbor_cells(x_data, pbc_shells, cell, i_thread)
+   SUBROUTINE hfx_create_neighbor_cells(x_data, pbc_shells, cell, i_thread, nkp_grid)
       TYPE(hfx_type), POINTER                            :: x_data
       INTEGER, INTENT(INOUT)                             :: pbc_shells
       TYPE(cell_type), POINTER                           :: cell
       INTEGER, INTENT(IN)                                :: i_thread
+      INTEGER, DIMENSION(3), OPTIONAL                    :: nkp_grid
 
       CHARACTER(LEN=512)                                 :: error_msg
       CHARACTER(LEN=64)                                  :: char_nshells
       INTEGER :: i, idx, ikind, ipgf, iset, ishell, j, jkind, jpgf, jset, jshell, k, kshell, l, &
-         m(3), max_shell, nseta, nsetb, perd(3), total_number_of_cells, ub, ub_max
+         m(3), max_shell, nkp(3), nseta, nsetb, perd(3), total_number_of_cells, ub, ub_max
       INTEGER, DIMENSION(:), POINTER                     :: la_max, lb_max, npgfa, npgfb
-      LOGICAL                                            :: image_cell_found, nothing_more_to_add
+      LOGICAL                                            :: do_kpoints, image_cell_found, &
+                                                            nothing_more_to_add
       REAL(dp) :: cross_product(3), dist_min, distance(14), l_min, normal(3, 6), P(3, 14), &
          plane_vector(3, 2), point_in_plane(3), r(3), R1, R_max, R_max_stress, s(3), x, y, z, Zeta1
       REAL(dp), DIMENSION(:, :), POINTER                 :: zeta, zetb
       TYPE(hfx_cell_type), ALLOCATABLE, DIMENSION(:)     :: tmp_neighbor_cells
 
       total_number_of_cells = 0
+
+      nkp = 1
+      IF (PRESENT(nkp_grid)) nkp = nkp_grid
+      do_kpoints = ANY(nkp > 1)
 
       ! ** Check some settings
       IF (i_thread == 1) THEN
@@ -1941,17 +2041,27 @@ CONTAINS
                          "of a truncated or shortrange potential. This may lead to unphysical total energies. "// &
                          "Use a truncated  potential to avoid possible problems.")
          ELSE IF (x_data%potential_parameter%potential_type /= do_potential_id) THEN
-            l_min = MIN(plane_distance(1, 0, 0, cell), &
-                        plane_distance(0, 1, 0, cell), &
-                        plane_distance(0, 0, 1, cell))
+            !If k-points, use the Born-von Karman super cell as reference
+            l_min = MIN(REAL(nkp(1), dp)*plane_distance(1, 0, 0, cell), &
+                        REAL(nkp(2), dp)*plane_distance(0, 1, 0, cell), &
+                        REAL(nkp(3), dp)*plane_distance(0, 0, 1, cell))
             l_min = 0.5_dp*l_min
             IF (x_data%potential_parameter%cutoff_radius >= l_min) THEN
-               CALL cp_warn(__LOCATION__, &
-                            "Periodic Hartree Fock calculation requested with use "// &
-                            "of a truncated or shortrange potential. The cutoff radius is larger than half "// &
-                            "the minimal cell dimension. This may lead to unphysical "// &
-                            "total energies. Reduce the cutoff radius in order to avoid "// &
-                            "possible problems.")
+               IF (.NOT. do_kpoints) THEN
+                  CALL cp_warn(__LOCATION__, &
+                               "Periodic Hartree Fock calculation requested with the use "// &
+                               "of a truncated or shortrange potential. The cutoff radius is larger than half "// &
+                               "the minimal cell dimension. This may lead to unphysical "// &
+                               "total energies. Reduce the cutoff radius in order to avoid "// &
+                               "possible problems.")
+               ELSE
+                  CALL cp_warn(__LOCATION__, &
+                               "K-point Hartree-Fock calculation requested with the use of a "// &
+                               "truncated or shortrange potential. The cutoff radius is larger than "// &
+                               "half the minimal Born-von Karman supercell dimension. This may lead "// &
+                               "to unphysical total energies. Reduce the cutoff radius or increase "// &
+                               "the number of K-points in order to avoid possible problems.")
+               END IF
             END IF
          END IF
       END IF

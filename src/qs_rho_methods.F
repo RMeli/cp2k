@@ -33,7 +33,10 @@ MODULE qs_rho_methods
    USE message_passing,                 ONLY: mp_para_env_type
    USE pw_env_types,                    ONLY: pw_env_get,&
                                               pw_env_type
-   USE pw_methods,                      ONLY: pw_zero
+   USE pw_methods,                      ONLY: pw_axpy,&
+                                              pw_copy,&
+                                              pw_scale,&
+                                              pw_zero
    USE pw_pool_types,                   ONLY: pw_pool_create_pw,&
                                               pw_pool_type
    USE pw_types,                        ONLY: COMPLEXDATA1D,&
@@ -107,7 +110,6 @@ CONTAINS
       LOGICAL                                            :: do_kpoints, my_admm, my_rebuild_ao, &
                                                             my_rebuild_grids, rho_ao_is_complex
       REAL(KIND=dp), DIMENSION(:), POINTER               :: tot_rho_r
-      TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: matrix_s
       TYPE(dbcsr_p_type), DIMENSION(:, :), POINTER       :: matrix_s_kp, rho_ao_im_kp, rho_ao_kp
       TYPE(dbcsr_type), POINTER                          :: refmatrix, tmatrix
       TYPE(dft_control_type), POINTER                    :: dft_control
@@ -122,7 +124,7 @@ CONTAINS
 
       CALL timeset(routineN, handle)
 
-      NULLIFY (pw_env, auxbas_pw_pool, matrix_s, matrix_s_kp, dft_control)
+      NULLIFY (pw_env, auxbas_pw_pool, matrix_s_kp, dft_control)
       NULLIFY (tot_rho_r, rho_ao_kp, rho_r, rho_g, drho_r, drho_g, tau_r, tau_g, rho_ao_im_kp)
       NULLIFY (rho_r_sccs)
       NULLIFY (sab_orb)
@@ -144,13 +146,17 @@ CONTAINS
       nimg = dft_control%nimages
 
       IF (my_admm) THEN
-         CPASSERT(.NOT. do_kpoints)
-         CALL get_admm_env(qs_env%admm_env, sab_aux_fit=sab_orb, matrix_s_aux_fit=matrix_s)
-         refmatrix => matrix_s(1)%matrix
+         CALL get_admm_env(qs_env%admm_env, sab_aux_fit=sab_orb, matrix_s_aux_fit_kp=matrix_s_kp)
       ELSE
-         CALL get_qs_env(qs_env, matrix_s_kp=matrix_s_kp, sab_orb=sab_orb)
-         refmatrix => matrix_s_kp(1, 1)%matrix
+         CALL get_qs_env(qs_env, matrix_s_kp=matrix_s_kp)
+
+         IF (do_kpoints) THEN
+            CALL get_kpoint_info(kpoints, sab_nl=sab_orb)
+         ELSE
+            CALL get_qs_env(qs_env, sab_orb=sab_orb)
+         END IF
       END IF
+      refmatrix => matrix_s_kp(1, 1)%matrix
 
       CALL pw_env_get(pw_env, auxbas_pw_pool=auxbas_pw_pool)
       nspins = dft_control%nspins
@@ -880,13 +886,14 @@ CONTAINS
             DO i = 1, mspin
                CALL pw_pool_create_pw(auxbas_pw_pool, rho_r_out(i), &
                                       use_data=REALDATA3D, in_space=REALSPACE)
-               rho_r_out(i)%cr3d(:, :, :) = rho_r_in(1)%cr3d(:, :, :)*ospin
+               CALL pw_copy(rho_r_in(1), rho_r_out(i))
+               CALL pw_scale(rho_r_out(i), ospin)
             END DO
          ELSE
             DO i = 1, nspins
                CALL pw_pool_create_pw(auxbas_pw_pool, rho_r_out(i), &
                                       use_data=REALDATA3D, in_space=REALSPACE)
-               rho_r_out(i)%cr3d(:, :, :) = rho_r_in(i)%cr3d(:, :, :)
+               CALL pw_copy(rho_r_in(i), rho_r_out(i))
             END DO
          END IF
       END IF
@@ -902,14 +909,15 @@ CONTAINS
                CALL pw_pool_create_pw(auxbas_pw_pool, rho_g_out(i), &
                                       use_data=COMPLEXDATA1D, &
                                       in_space=RECIPROCALSPACE)
-               rho_g_out(i)%cc(:) = rho_g_in(1)%cc(:)*ospin
+               CALL pw_copy(rho_g_in(1), rho_g_out(i))
+               CALL pw_scale(rho_g_out(i), ospin)
             END DO
          ELSE
             DO i = 1, nspins
                CALL pw_pool_create_pw(auxbas_pw_pool, rho_g_out(i), &
                                       use_data=COMPLEXDATA1D, &
                                       in_space=RECIPROCALSPACE)
-               rho_g_out(i)%cc(:) = rho_g_in(i)%cc(:)
+               CALL pw_copy(rho_g_in(i), rho_g_out(i))
             END DO
          END IF
       END IF
@@ -920,7 +928,7 @@ CONTAINS
          CALL pw_pool_create_pw(auxbas_pw_pool, rho_r_sccs_out, &
                                 in_space=REALSPACE, &
                                 use_data=REALDATA3D)
-         rho_r_sccs_out%cr3d(:, :, :) = rho_r_sccs_in%cr3d(:, :, :)
+         CALL pw_copy(rho_r_sccs_in, rho_r_sccs_out)
       END IF
 
       ! drho_r
@@ -934,7 +942,8 @@ CONTAINS
                DO i = 1, 3
                   CALL pw_pool_create_pw(auxbas_pw_pool, drho_r_out(i, j), &
                                          use_data=REALDATA3D, in_space=REALSPACE)
-                  drho_r_out(i, j)%cr3d(:, :, :) = drho_r_in(i, 1)%cr3d(:, :, :)*ospin
+                  CALL pw_copy(drho_r_in(i, 1), drho_r_out(i, j))
+                  CALL pw_scale(drho_r_out(i, j), ospin)
                END DO
             END DO
          ELSE
@@ -942,7 +951,7 @@ CONTAINS
                DO i = 1, 3
                   CALL pw_pool_create_pw(auxbas_pw_pool, drho_r_out(i, j), &
                                          use_data=REALDATA3D, in_space=REALSPACE)
-                  drho_r_out(i, j)%cr3d(:, :, :) = drho_r_in(i, j)%cr3d(:, :, :)
+                  CALL pw_copy(drho_r_in(i, j), drho_r_out(i, j))
                END DO
             END DO
          END IF
@@ -960,7 +969,8 @@ CONTAINS
                   CALL pw_pool_create_pw(auxbas_pw_pool, drho_g_out(i, j), &
                                          use_data=COMPLEXDATA1D, &
                                          in_space=RECIPROCALSPACE)
-                  drho_g_out(i, j)%cc(:) = drho_g_in(i, 1)%cc(:)*ospin
+                  CALL pw_copy(drho_g_in(i, 1), drho_g_out(i, j))
+                  CALL pw_scale(drho_g_out(i, j), ospin)
                END DO
             END DO
          ELSE
@@ -969,7 +979,7 @@ CONTAINS
                   CALL pw_pool_create_pw(auxbas_pw_pool, drho_g_out(i, j), &
                                          use_data=COMPLEXDATA1D, &
                                          in_space=RECIPROCALSPACE)
-                  drho_g_out(i, j)%cc(:) = drho_g_in(i, j)%cc(:)
+                  CALL pw_copy(drho_g_in(i, j), drho_g_out(i, j))
                END DO
             END DO
          END IF
@@ -985,13 +995,14 @@ CONTAINS
             DO i = 1, mspin
                CALL pw_pool_create_pw(auxbas_pw_pool, tau_r_out(i), &
                                       use_data=REALDATA3D, in_space=REALSPACE)
-               tau_r_out(i)%cr3d(:, :, :) = tau_r_in(1)%cr3d(:, :, :)*ospin
+               CALL pw_copy(tau_r_in(1), tau_r_out(i))
+               CALL pw_scale(tau_r_out(i), ospin)
             END DO
          ELSE
             DO i = 1, nspins
                CALL pw_pool_create_pw(auxbas_pw_pool, tau_r_out(i), &
                                       use_data=REALDATA3D, in_space=REALSPACE)
-               tau_r_out(i)%cr3d(:, :, :) = tau_r_in(i)%cr3d(:, :, :)
+               CALL pw_copy(tau_r_in(i), tau_r_out(i))
             END DO
          END IF
       END IF
@@ -1007,14 +1018,15 @@ CONTAINS
                CALL pw_pool_create_pw(auxbas_pw_pool, tau_g_out(i), &
                                       use_data=COMPLEXDATA1D, &
                                       in_space=RECIPROCALSPACE)
-               tau_g_out(i)%cc(:) = tau_g_in(1)%cc(:)*ospin
+               CALL pw_copy(tau_g_in(1), tau_g_out(i))
+               CALL pw_scale(tau_g_out(i), ospin)
             END DO
          ELSE
             DO i = 1, nspins
                CALL pw_pool_create_pw(auxbas_pw_pool, tau_g_out(i), &
                                       use_data=COMPLEXDATA1D, &
                                       in_space=RECIPROCALSPACE)
-               tau_g_out(i)%cc(:) = tau_g_in(i)%cc(:)
+               CALL pw_copy(tau_g_in(i), tau_g_out(i))
             END DO
          END IF
       END IF
@@ -1150,7 +1162,7 @@ CONTAINS
          nspinb = SIZE(rho_ao_b)
          nspins = MIN(nspina, nspinb)
          DO i = 1, nspins
-            rho_r_a(i)%cr3d(:, :, :) = alpha*rho_r_a(i)%cr3d(:, :, :) + beta*rho_r_b(i)%cr3d(:, :, :)
+            CALL pw_axpy(rho_r_b(i), rho_r_a(i), beta, alpha)
          END DO
       END IF
 
@@ -1160,13 +1172,13 @@ CONTAINS
          nspinb = SIZE(rho_ao_b)
          nspins = MIN(nspina, nspinb)
          DO i = 1, nspins
-            rho_g_a(i)%cc(:) = alpha*rho_g_a(i)%cc(:) + beta*rho_g_b(i)%cc(:)
+            CALL pw_axpy(rho_g_b(i), rho_g_a(i), beta, alpha)
          END DO
       END IF
 
       ! SCCS
       IF (ASSOCIATED(rho_r_sccs_a) .AND. ASSOCIATED(rho_r_sccs_b)) THEN
-         rho_r_sccs_a%cr3d(:, :, :) = alpha*rho_r_sccs_a%cr3d(:, :, :) + beta*rho_r_sccs_b%cr3d(:, :, :)
+         CALL pw_axpy(rho_r_sccs_b, rho_r_sccs_a, beta, alpha)
       END IF
 
       ! drho_r
@@ -1174,7 +1186,7 @@ CONTAINS
          CPASSERT(ALL(SHAPE(drho_r_a) == SHAPE(drho_r_b))) ! not implemented
          DO j = 1, SIZE(drho_r_a, 2)
             DO i = 1, SIZE(drho_r_a, 1)
-               drho_r_a(i, j)%cr3d(:, :, :) = alpha*drho_r_a(i, j)%cr3d(:, :, :) + beta*drho_r_b(i, j)%cr3d(:, :, :)
+               CALL pw_axpy(drho_r_b(i, j), drho_r_a(i, j), beta, alpha)
             END DO
          END DO
       END IF
@@ -1184,7 +1196,7 @@ CONTAINS
          CPASSERT(ALL(SHAPE(drho_g_a) == SHAPE(drho_g_b))) ! not implemented
          DO j = 1, SIZE(drho_g_a, 2)
             DO i = 1, SIZE(drho_g_a, 1)
-               drho_g_a(i, j)%cc(:) = alpha*drho_g_a(i, j)%cc(:) + beta*drho_g_b(i, j)%cc(:)
+               CALL pw_axpy(drho_g_b(i, j), drho_g_a(i, j), beta, alpha)
             END DO
          END DO
       END IF
@@ -1195,7 +1207,7 @@ CONTAINS
          nspinb = SIZE(rho_ao_b)
          nspins = MIN(nspina, nspinb)
          DO i = 1, nspins
-            tau_r_a(i)%cr3d(:, :, :) = alpha*tau_r_a(i)%cr3d(:, :, :) + beta*tau_r_b(i)%cr3d(:, :, :)
+            CALL pw_axpy(tau_r_b(i), tau_r_a(i), beta, alpha)
          END DO
       END IF
 
@@ -1205,7 +1217,7 @@ CONTAINS
          nspinb = SIZE(rho_ao_b)
          nspins = MIN(nspina, nspinb)
          DO i = 1, nspins
-            tau_g_a(i)%cc(:) = alpha*tau_g_a(i)%cc(:) + beta*tau_g_b(i)%cc(:)
+            CALL pw_axpy(tau_g_b(i), tau_g_a(i), beta, alpha)
          END DO
       END IF
 
@@ -1338,7 +1350,7 @@ CONTAINS
          DO i = 1, nspins
             CALL pw_pool_create_pw(auxbas_pw_pool, rho_r_out(i), &
                                    use_data=REALDATA3D, in_space=REALSPACE)
-            rho_r_out(i)%cr3d(:, :, :) = rho_r_in(i)%cr3d(:, :, :)
+            CALL pw_copy(rho_r_in(i), rho_r_out(i))
          END DO
       END IF
 
@@ -1350,7 +1362,7 @@ CONTAINS
             CALL pw_pool_create_pw(auxbas_pw_pool, rho_g_out(i), &
                                    use_data=COMPLEXDATA1D, &
                                    in_space=RECIPROCALSPACE)
-            rho_g_out(i)%cc(:) = rho_g_in(i)%cc(:)
+            CALL pw_copy(rho_g_in(i), rho_g_out(i))
          END DO
       END IF
 
@@ -1360,7 +1372,7 @@ CONTAINS
          CALL pw_pool_create_pw(auxbas_pw_pool, rho_r_sccs_out, &
                                 in_space=REALSPACE, &
                                 use_data=REALDATA3D)
-         rho_r_sccs_out%cr3d(:, :, :) = rho_r_sccs_in%cr3d(:, :, :)
+         CALL pw_copy(rho_r_sccs_in, rho_r_sccs_out)
       END IF
 
       ! drho_r and drho_g are only needed if calculated by collocation
@@ -1373,7 +1385,7 @@ CONTAINS
                DO i = 1, 3
                   CALL pw_pool_create_pw(auxbas_pw_pool, drho_r_out(i, j), &
                                          use_data=REALDATA3D, in_space=REALSPACE)
-                  drho_r_out(i, j)%cr3d(:, :, :) = drho_r_in(i, j)%cr3d(:, :, :)
+                  CALL pw_copy(drho_r_in(i, j), drho_r_out(i, j))
                END DO
             END DO
          END IF
@@ -1387,7 +1399,7 @@ CONTAINS
                   CALL pw_pool_create_pw(auxbas_pw_pool, drho_g_out(i, j), &
                                          use_data=COMPLEXDATA1D, &
                                          in_space=RECIPROCALSPACE)
-                  drho_g_out(i, j)%cc(:) = drho_g_in(i, j)%cc(:)
+                  CALL pw_copy(drho_g_in(i, j), drho_g_out(i, j))
                END DO
             END DO
          END IF
@@ -1404,7 +1416,7 @@ CONTAINS
             DO i = 1, nspins
                CALL pw_pool_create_pw(auxbas_pw_pool, tau_r_out(i), &
                                       use_data=REALDATA3D, in_space=REALSPACE)
-               tau_r_out(i)%cr3d(:, :, :) = tau_r_in(i)%cr3d(:, :, :)
+               CALL pw_copy(tau_r_in(i), tau_r_out(i))
             END DO
          END IF
 
@@ -1416,7 +1428,7 @@ CONTAINS
                CALL pw_pool_create_pw(auxbas_pw_pool, tau_g_out(i), &
                                       use_data=COMPLEXDATA1D, &
                                       in_space=RECIPROCALSPACE)
-               tau_g_out(i)%cc(:) = tau_g_in(i)%cc(:)
+               CALL pw_copy(tau_g_in(i), tau_g_out(i))
             END DO
          END IF
       END IF

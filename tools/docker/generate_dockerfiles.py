@@ -32,6 +32,9 @@ def main() -> None:
         f.write(toolchain_full(mpi_mode="openmpi", with_gcc="install"))
         f.write(regtest("psmp"))
 
+    with OutputFile(f"Dockerfile.test_fedora-psmp", args.check) as f:
+        f.write(toolchain_full(base_image="fedora:38") + regtest("psmp"))
+
     with OutputFile(f"Dockerfile.test_intel-psmp", args.check) as f:
         f.write(toolchain_intel() + regtest("psmp", intel=True))
 
@@ -121,6 +124,15 @@ def main() -> None:
         with OutputFile(f"Dockerfile.test_{name}", args.check) as f:
             f.write(test_without_build(name))
 
+    with OutputFile(f"Dockerfile.gcc_spack", args.check) as f:
+        f.write(spack_toolchain_cpu())
+
+    with OutputFile(f"Dockerfile.gcc_spack_cuda", args.check) as f:
+        f.write(spack_toolchain_cuda())
+
+    with OutputFile(f"Dockerfile.gcc_spack_rocm", args.check) as f:
+        f.write(spack_toolchain_rocm())
+
 
 # ======================================================================================
 def regtest(
@@ -133,7 +145,7 @@ def regtest(
 ARG TESTOPTS="{testopts}"
 COPY ./tools/docker/scripts/test_regtest.sh ./
 RUN /bin/bash -o pipefail -c " \
-    TESTOPTS="${{TESTOPTS}}" \
+    TESTOPTS='${{TESTOPTS}}' \
     ./test_regtest.sh '{arch}' '{version}' |& tee report.log && \
     rm -rf regtesting"
 """
@@ -227,9 +239,8 @@ def manual() -> str:
         install_cp2k(version="psmp", arch="local", revision=True)
         + rf"""
 # Generate manual.
-COPY ./tools/manual ./tools/manual
-COPY ./tools/input_editing ./tools/input_editing
 COPY ./docs ./docs
+COPY ./tools/input_editing ./tools/input_editing
 COPY ./tools/docker/scripts/test_manual.sh .
 ARG ADD_EDIT_LINKS=yes
 RUN ./test_manual.sh "${{ADD_EDIT_LINKS}}" 2>&1 | tee report.log
@@ -291,6 +302,7 @@ COPY ./exts ./exts
 COPY ./data ./data
 COPY ./docs ./docs
 COPY ./tools ./tools
+COPY ./tests ./tests
 COPY ./cmake ./cmake
 COPY ./CMakeLists.txt .
 COPY ./Makefile .
@@ -324,7 +336,7 @@ def production(version: str, arch: str = "local", intel: bool = False) -> str:
 ARG TESTOPTS
 RUN /bin/bash -c " \
     source /opt/cp2k-toolchain/install/setup && \
-    ./tools/regtesting/do_regtest.py '{arch}' '{version}' --skipdir=UNIT/libcp2k_unittest "${{TESTOPTS}}" |& tee regtests.log && \
+    ./tests/do_regtest.py '{arch}' '{version}' --skipdir=UNIT/libcp2k_unittest "${{TESTOPTS}}" |& tee regtests.log && \
     rm -rf regtesting"
 
 # Setup entry point for production.
@@ -369,12 +381,10 @@ def install_cp2k(
         input_lines.append(f"COPY ./arch/{arch}.{version} /opt/cp2k/arch/")
         run_lines.append(f"ln -s /opt/cp2k-toolchain /opt/cp2k/tools/toolchain")
 
-    run_lines.append("echo 'Compiling cp2k...'")
-    run_lines.append("source /opt/cp2k-toolchain/install/setup")
-
-    build_command = f"make -j ARCH={arch} VERSION={version}"
     if prod:
-        run_lines.append(build_command)
+        run_lines.append("echo 'Compiling cp2k...'")
+        run_lines.append("source /opt/cp2k-toolchain/install/setup")
+        run_lines.append(f"make -j ARCH={arch} VERSION={version}")
         run_lines.append(f"ln -sf ./cp2k.{version} ./exe/{arch}/cp2k")
         run_lines.append(f"ln -sf ./cp2k_shell.{version} ./exe/{arch}/cp2k_shell")
         run_lines.append(f"ln -sf ./graph.{version} ./exe/{arch}/graph")
@@ -382,14 +392,11 @@ def install_cp2k(
         run_lines.append(f"ln -sf ./xyz2dcd.{version} ./exe/{arch}/xyz2dcd")
         # Remove libcp2k_unittest to reduce image size.
         run_lines.append(f"rm -rf lib obj exe/{arch}/libcp2k_unittest.{version}")
-    else:
-        run_lines.append(f"( {build_command} &> /dev/null || true )")
-        run_lines.append(f"rm -rf lib obj")
 
-    # Ensure MPI is dynamically linked, which is needed e.g. for Shifter.
-    if version.startswith("p") and not intel:
-        binary = f"./exe/{arch}/cp2k.{version}"
-        run_lines.append(f"( [ ! -f {binary} ] || ldd {binary} | grep -q libmpi )")
+        # Ensure MPI is dynamically linked, which is needed e.g. for Shifter.
+        if version.startswith("p") and not intel:
+            binary = f"./exe/{arch}/cp2k.{version}"
+            run_lines.append(f"( [ ! -f {binary} ] || ldd {binary} | grep -q libmpi )")
 
     input_block = "\n".join(input_lines)
     run_block = " && \\\n    ".join(run_lines)
@@ -488,7 +495,7 @@ RUN ln -sf /usr/bin/gcc-{gcc_version}      /usr/local/bin/gcc  && \
 # ======================================================================================
 def toolchain_intel() -> str:
     return rf"""
-FROM intel/oneapi-hpckit:2023.0.0-devel-ubuntu22.04
+FROM intel/oneapi-hpckit:2023.2.1-devel-ubuntu22.04
 
 """ + install_toolchain(
         base_image="ubuntu",
@@ -770,6 +777,215 @@ COPY ./tools/toolchain/scripts/arch_base.tmpl \
      ./scripts/
 RUN ./scripts/generate_arch_files.sh && rm -rf ./build
 """.lstrip()
+
+
+# ======================================================================================
+def spack_toolchain_cpu() -> str:
+    return rf"""
+FROM docker.io/ubuntu22.04 as builder
+
+ARG CUDA_ARCH=80
+
+ENV DEBIAN_FRONTEND noninteractive
+
+ENV FORCE_UNSAFE_CONFIGURE 1
+
+ENV PATH="/spack/bin:${{PATH}}"
+
+ENV MPICH_VERSION=4.0.3
+ENV CMAKE_VERSION=3.25.2
+RUN apt-get update -qq
+RUN apt-get install -qq --no-install-recommends autoconf autogen automake autotools-dev bzip2 ca-certificates g++ gcc gfortran git less libtool libtool-bin make nano patch pkg-config python3 unzip wget xxd zlib1g-dev cmake gnupg m4 xz-utils libssl-dev libssh-dev
+RUN wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_386 && chmod a+x /usr/local/bin/yq
+# get latest version of spack
+RUN git clone https://github.com/spack/spack.git
+
+# set the location of packages built by spack
+RUN spack config add config:install_tree:root:/opt/spack
+
+# find all external packages
+RUN spack external find --all --exclude python
+# find compilers
+RUN spack compiler find
+# tweaking the arguments
+RUN yq -i '.compilers[0].compiler.flags.fflags = "-fallow-argument-mismatch"' /root/.spack/linux/compilers.yaml
+
+# copy bunch of things from the ci
+COPY ci/spack /root/spack-recipe
+RUN spack repo add /root/spack-recipe/ --scope user
+
+#install openmpi
+RUN spack install openmpi
+
+#install few dependencies.
+RUN spack install intel-oneapi-mkl+cluster
+RUN spack install openblas+fortran
+RUN spack install libxsmm
+RUN spack install libxc
+RUN spack install gsl
+RUN spack install py-fypp
+RUN spack install spglib
+RUN spack install fftw
+RUN spack install fftw+openmp
+RUN spack install libvori
+
+# full spec
+ENV SPEC_OPENBLAS="cp2k@master%gcc +libxc +libint +sirius +elpa +plumed +pexsi smm=libxsmm +spglib +cosma +mpi +openmp ^openblas+fortran ^cosma+scalapack+shared"
+
+# NB : the next 4 lines can be removed normally but it is still better to create
+  additional stages in case of a build failure of cp2k.
+
+# install all dependencies
+RUN spack install --only=dependencies --fail-fast $SPEC_OPENBLAS ^openmpi
+RUN spack install --fail-fast $SPEC_OPENBLAS ^openmpi
+RUN spack clean -dfs
+"""
+
+
+# ======================================================================================
+def spack_toolchain_cuda() -> str:
+    return rf"""
+FROM docker.io/nvidia/cuda:12.1.0-devel-ubuntu22.04 as builder
+
+ARG CUDA_ARCH=80
+
+ENV DEBIAN_FRONTEND noninteractive
+
+ENV FORCE_UNSAFE_CONFIGURE 1
+ENV LIBRARY_PATH=$LIBRARY_PATH:/usr/local/cuda/lib64/stubs
+
+ENV PATH="/spack/bin:${{PATH}}"
+
+ENV MPICH_VERSION=4.0.3
+ENV CMAKE_VERSION=3.25.2
+RUN apt-get update -qq
+RUN apt-get install -qq --no-install-recommends autoconf autogen automake autotools-dev bzip2 ca-certificates g++ gcc gfortran git less libtool libtool-bin make nano patch pkg-config python3 unzip wget xxd zlib1g-dev cmake gnupg m4 xz-utils libssl-dev libssh-dev
+RUN wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_386 && chmod a+x /usr/local/bin/yq
+# get latest version of spack
+RUN git clone https://github.com/spack/spack.git
+
+# set the location of packages built by spack
+RUN spack config add config:install_tree:root:/opt/spack
+# set cuda_arch for all packages
+# RUN spack config add packages:all:variants:cuda_arch=${{CUDA_ARCH}}
+
+# find all external packages
+RUN spack external find --all --exclude python
+# find compilers
+RUN spack compiler find
+# tweaking the arguments
+RUN yq -i '.compilers[0].compiler.flags.fflags = "-fallow-argument-mismatch"' /root/.spack/linux/compilers.yaml
+
+# copy bunch of things from the ci
+COPY ci/spack /root/spack-recipe
+RUN spack repo add /root/spack-recipe/ --scope user
+
+#install openmpi
+RUN spack install openmpi
+
+#install few dependencies.
+RUN spack install openblas+fortran
+RUN spack install libxsmm
+RUN spack install gsl
+RUN spack install py-fypp
+RUN spack install spglib
+RUN spack install fftw
+RUN spack install fftw+openmp
+RUN spack install libvori
+RUN ldconfig
+
+# full spec
+ENV SPEC_OPENBLAS="cp2k@master%gcc build_system=cmake +libxc+libint+sirius+elpa+plumed+pexsi+spglib+cosma+mpi+openmp+cuda cuda_arch=80  smm=libxsmm ^openblas+fortran ^cosma+scalapack+shared+cuda ^dbcsr+cuda~shared cuda_arch=70 ^sirius+cuda"
+#ENV SPEC_MKL="cp2k@master%gcc build_system=cmake +libxc+libint+sirius+elpa+plumed+pexsi smm=libxsmm +spglib +mpi +openmp +cuda cuda_arch=80 ^intel-oneapi-mkl+cluster ^dbcsr+cuda+shared cuda_arch=70"
+
+# NB : the next 4 lines can be removed normally but it is still better to create
+#  additional stages in case of a build failure of cp2k.
+
+# install all dependencies
+RUN spack install --only=dependencies --fail-fast $SPEC_OPENBLAS ^openmpi
+# install cp2k itself
+RUN spack install --fail-fast $SPEC_OPENBLAS ^openmpi
+RUN spack clean -dfs
+"""
+
+
+# ======================================================================================
+def spack_toolchain_rocm() -> str:
+    return rf"""
+FROM docker.io/rocm/dev-ubuntu-22.04:5.5.1-complete
+
+ARG ROCM_ARCH=gfx90a
+ARG ROCM_VERSION=5.5.1
+ARG AMDGPU_VERSION=5.4.3
+ENV DEBIAN_FRONTEND=noninteractive
+
+ENV FORCE_UNSAFE_CONFIGURE 1
+
+ENV PATH="/spack/bin:${{PATH}}"
+
+ENV CMAKE_VERSION=3.26.3
+ENV MPICH_VERSION=3.4.3
+
+RUN apt-get -y update && apt-get install -y apt-utils
+
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl gnupg && \
+  apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+  sudo \
+  libelf1 \
+  xz-utils \
+  liblzma-dev \
+  libnuma-dev \
+  build-essential \
+  git \
+  vim-nox \
+  cmake-curses-gui \
+  kmod \
+  file \
+  libbz2-dev \
+  python3 \
+  python3-dev \
+  python3-pip \
+  rocm-dev gcc g++ gfortran clang git make unzip \
+  vim wget pkg-config python3-pip python3-venv curl tcl m4 cpio automake \
+  apt-transport-https ca-certificates gnupg software-properties-common \
+  patchelf meson
+
+# install CMake
+RUN wget https://github.com/Kitware/CMake/releases/download/v${{CMAKE_VERSION}}/cmake-${{CMAKE_VERSION}}-linux-x86_64.tar.gz -O cmake.tar.gz && \
+    tar zxvf cmake.tar.gz --strip-components=1 -C /usr
+
+# get latest version of spack
+RUN git clone https://github.com/spack/spack.git
+
+# set the location of packages built by spack
+RUN spack config add config:install_tree:root:/opt/local
+# set amdgpu_target for all packages
+RUN spack config add packages:all:variants:amdgpu_target=${{ROCM_ARCH}}
+# set basic x86_64 architecture
+RUN spack config add packages:all:target:x86_64
+
+# find gcc and clang compilers
+RUN spack compiler find
+RUN spack external find --all
+
+# install yq (utility to manipulate the yaml files)
+RUN wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_386 && chmod a+x /usr/local/bin/yq
+
+# change the fortran compilers: for gcc the gfortran is already properly set and the change has no effect; add it for clang
+RUN yq -i '.compilers[0].compiler.flags.fflags = "-fallow-argument-mismatch"' /root/.spack/linux/compilers.yaml
+
+# copy bunch of things from the ci
+COPY ci/spack /root/spack-recipe
+RUN spack repo add /root/spack-recipe/ --scope user
+
+# find gcc and clang compilers
+#RUN spack compiler find
+#RUN spack external find --all
+
+ENV SPEC_OPENBLAS="cp2k@master%gcc build_system=cmake +sirius +elpa +libxc +libint smm=libxsmm +spglib +cosma +rocm amdgpu_target=gfx90a +pexsi +plumed +libvori +openmp ^openblas+fortran ^dbcsr+mpi+rocm~shared+openmp amdgpu_target=gfx906 ^cosma+shared~tests~apps+rocm"
+# install all dependencies
+RUN spack install --only=dependencies --fail-fast $SPEC_OPENBLAS ^openmpi
+"""
 
 
 # ======================================================================================

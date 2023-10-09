@@ -23,10 +23,12 @@ MODULE qs_ks_methods
    USE admm_dm_methods,                 ONLY: admm_dm_calc_rho_aux,&
                                               admm_dm_merge_ks_matrix
    USE admm_methods,                    ONLY: admm_mo_calc_rho_aux,&
+                                              admm_mo_calc_rho_aux_kp,&
                                               admm_mo_merge_ks_matrix,&
                                               admm_update_ks_atom,&
                                               calc_admm_mo_derivatives,&
-                                              calc_admm_ovlp_forces
+                                              calc_admm_ovlp_forces,&
+                                              calc_admm_ovlp_forces_kp
    USE admm_types,                      ONLY: admm_type,&
                                               get_admm_env
    USE cell_types,                      ONLY: cell_type
@@ -49,7 +51,8 @@ MODULE qs_ks_methods
    USE hartree_local_methods,           ONLY: Vh_1c_gg_integrals
    USE hartree_local_types,             ONLY: ecoul_1center_type
    USE hfx_admm_utils,                  ONLY: hfx_admm_init,&
-                                              hfx_ks_matrix
+                                              hfx_ks_matrix,&
+                                              hfx_ks_matrix_kp
    USE input_constants,                 ONLY: do_ppl_grid,&
                                               outer_scf_becke_constraint,&
                                               outer_scf_hirshfeld_constraint
@@ -60,6 +63,8 @@ MODULE qs_ks_methods
    USE kg_correction,                   ONLY: kg_ekin_subset
    USE kinds,                           ONLY: default_string_length,&
                                               dp
+   USE kpoint_types,                    ONLY: get_kpoint_info,&
+                                              kpoint_type
    USE lri_environment_methods,         ONLY: v_int_ppl_energy
    USE lri_environment_types,           ONLY: lri_density_type,&
                                               lri_environment_type,&
@@ -182,10 +187,10 @@ CONTAINS
       CHARACTER(len=default_string_length)               :: name
       INTEGER                                            :: handle, iatom, img, ispin, nimages, ns, &
                                                             nspins
-      LOGICAL :: do_adiabatic_rescaling, do_ddapc, do_hfx, do_ppl, gapw, gapw_xc, &
+      LOGICAL :: do_adiabatic_rescaling, do_ddapc, do_hfx, do_ppl, dokp, gapw, gapw_xc, &
          hfx_treat_lsd_in_core, just_energy_xc, lrigpw, my_print, rigpw, use_virial
       REAL(KIND=dp)                                      :: ecore_ppl, edisp, ee_ener, ekin_mol, &
-                                                            mulliken_order_p
+                                                            mulliken_order_p, vscale
       REAL(KIND=dp), DIMENSION(3, 3)                     :: h_stress, pv_loc
       TYPE(admm_type), POINTER                           :: admm_env
       TYPE(cdft_control_type), POINTER                   :: cdft_control
@@ -288,6 +293,7 @@ CONTAINS
       CPASSERT(ASSOCIATED(rho))
       CPASSERT(ASSOCIATED(pw_env))
       CPASSERT(SIZE(ks_matrix, 1) > 0)
+      dokp = (nimages > 1)
 
       ! Setup the possible usage of DDAPC charges
       do_ddapc = dft_control%qs_control%ddapc_restraint .OR. &
@@ -497,13 +503,17 @@ CONTAINS
 
       ! calculate the density matrix for the fitted mo_coeffs
       IF (dft_control%do_admm) THEN
-         CALL hfx_admm_init(qs_env)
+         CALL hfx_admm_init(qs_env, calculate_forces)
 
          IF (dft_control%do_admm_mo) THEN
             IF (qs_env%run_rtp) THEN
                CALL rtp_admm_calc_rho_aux(qs_env)
             ELSE
-               CALL admm_mo_calc_rho_aux(qs_env)
+               IF (dokp) THEN
+                  CALL admm_mo_calc_rho_aux_kp(qs_env)
+               ELSE
+                  CALL admm_mo_calc_rho_aux(qs_env)
+               END IF
             END IF
          ELSEIF (dft_control%do_admm_dm) THEN
             CALL admm_dm_calc_rho_aux(qs_env)
@@ -538,8 +548,12 @@ CONTAINS
          NULLIFY (rho_struct)
 
          IF (use_virial .AND. calculate_forces) THEN
-            virial%pv_exc = virial%pv_exc - virial%pv_xc
-            virial%pv_virial = virial%pv_virial - virial%pv_xc
+            vscale = 1.0_dp
+            !Note: ADMMS and ADMMP stress tensor only for closed-shell calculations
+            IF (admm_env%do_admms) vscale = admm_env%gsi(1)**(2.0_dp/3.0_dp)
+            IF (admm_env%do_admmp) vscale = admm_env%gsi(1)**2
+            virial%pv_exc = virial%pv_exc - vscale*virial%pv_xc
+            virial%pv_virial = virial%pv_virial - vscale*virial%pv_xc
             ! virial%pv_xc will be zeroed in the xc routines
          END IF
          xc_section => admm_env%xc_section_primary
@@ -596,8 +610,12 @@ CONTAINS
 
       ! *** Add Hartree-Fock contribution if required ***
       IF (do_hfx) THEN
-         CALL hfx_ks_matrix(qs_env, ks_matrix, rho, energy, calculate_forces, &
-                            just_energy, v_rspace_new, v_tau_rspace)
+         IF (dokp) THEN
+            CALL hfx_ks_matrix_kp(qs_env, ks_matrix, energy, calculate_forces)
+         ELSE
+            CALL hfx_ks_matrix(qs_env, ks_matrix, rho, energy, calculate_forces, &
+                               just_energy, v_rspace_new, v_tau_rspace)
+         END IF
 !!    Adiabatic rescaling  only if do_hfx; right?????
       END IF !do_hfx
 
@@ -773,7 +791,6 @@ CONTAINS
       IF (gapw .OR. gapw_xc) THEN
          ! Single atom contributions in the KS matrix ***
          CALL update_ks_atom(qs_env, ks_matrix, rho_ao, calculate_forces)
-
          IF (dft_control%do_admm) THEN
             !Single atom contribution to the AUX matrices
             !Note: also update ks_aux_fit matrix in case of rtp
@@ -832,7 +849,13 @@ CONTAINS
       END IF
 
       ! ADMM overlap forces
-      IF (calculate_forces .AND. dft_control%do_admm) CALL calc_admm_ovlp_forces(qs_env)
+      IF (calculate_forces .AND. dft_control%do_admm) THEN
+         IF (dokp) THEN
+            CALL calc_admm_ovlp_forces_kp(qs_env)
+         ELSE
+            CALL calc_admm_ovlp_forces(qs_env)
+         END IF
+      END IF
 
       ! deal with low spin roks
       CALL low_spin_roks(energy, qs_env, dft_control, do_hfx, just_energy, &
@@ -853,10 +876,8 @@ CONTAINS
          ! update core energy for grid based local pseudopotential
          ecore_ppl = 0._dp
          DO ispin = 1, nspins
-            ecore_ppl = ecore_ppl + &
-                        SUM(vppl_rspace%cr3d*rho_r(ispin)%cr3d)*vppl_rspace%pw_grid%dvol
+            ecore_ppl = ecore_ppl + pw_integral_ab(vppl_rspace, rho_r(ispin))
          END DO
-         CALL para_env%sum(ecore_ppl)
          energy%core = energy%core + ecore_ppl
       END IF
 
@@ -1222,22 +1243,31 @@ CONTAINS
 
       CHARACTER(LEN=default_string_length)               :: headline
       INTEGER                                            :: ic, ispin, nimages, nspins
+      LOGICAL                                            :: do_kpoints
       TYPE(dbcsr_p_type), DIMENSION(:, :), POINTER       :: matrix_s_kp, matrixkp_im_ks, matrixkp_ks
       TYPE(dbcsr_type), POINTER                          :: refmatrix
       TYPE(dft_control_type), POINTER                    :: dft_control
+      TYPE(kpoint_type), POINTER                         :: kpoints
       TYPE(neighbor_list_set_p_type), DIMENSION(:), &
          POINTER                                         :: sab_orb
       TYPE(qs_ks_env_type), POINTER                      :: ks_env
 
-      NULLIFY (dft_control, ks_env, matrix_s_kp, sab_orb, matrixkp_ks, refmatrix, matrixkp_im_ks)
+      NULLIFY (dft_control, ks_env, matrix_s_kp, sab_orb, matrixkp_ks, refmatrix, matrixkp_im_ks, kpoints)
 
       CALL get_qs_env(qs_env, &
                       dft_control=dft_control, &
                       matrix_s_kp=matrix_s_kp, &
                       ks_env=ks_env, &
-                      sab_orb=sab_orb, &
+                      kpoints=kpoints, &
+                      do_kpoints=do_kpoints, &
                       matrix_ks_kp=matrixkp_ks, &
                       matrix_ks_im_kp=matrixkp_im_ks)
+
+      IF (do_kpoints) THEN
+         CALL get_kpoint_info(kpoints, sab_nl=sab_orb)
+      ELSE
+         CALL get_qs_env(qs_env, sab_orb=sab_orb)
+      END IF
 
       nspins = dft_control%nspins
       nimages = dft_control%nimages
