@@ -12,9 +12,9 @@
 #include <dlaf_c/init.h>
 
 void dlaf_init() {
-  const char *pika_argv[] = {"cp2k", "--pika:bind=none", "--pika:threads=12"};
+  const char *pika_argv[] = {"cp2k", "--pika:print-bind"};
   const char *dlaf_argv[] = {"cp2k"};
-  dlaf_initialize(3, pika_argv, 1, dlaf_argv);
+  dlaf_initialize(2, pika_argv, 1, dlaf_argv);
 }
 
 void dlaf_pdsyevd_wrapper(int n, double *a, int ia, int ja, int desca[9],

@@ -183,8 +183,6 @@ CONTAINS
       ! Use eigenvectors matrix as workspace
       CALL cp_fm_upper_to_full(matrix, eigenvectors)
 
-      eigenvectors%local_data(:, :) = -23.0_dp
-
       a => matrix%local_data
       z => eigenvectors%local_data
 
