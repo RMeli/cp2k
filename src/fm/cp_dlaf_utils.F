@@ -32,13 +32,13 @@ CONTAINS
       INTERFACE
          SUBROUTINE dlaf_init_aux() &
             BIND(C, name='dlaf_init')
-         end SUBROUTINE dlaf_init_aux
-      end INTERFACE
+         END SUBROUTINE dlaf_init_aux
+      END INTERFACE
 
 #if defined(__DLAF)
       call dlaf_init_aux()
 #endif
-   end SUBROUTINE cp_dlaf_initialize
+   END SUBROUTINE cp_dlaf_initialize
 
 !***************************************************************************************************
 !> \brief Finalize DLA-Future and pika runtime
@@ -50,7 +50,7 @@ CONTAINS
       INTERFACE
          SUBROUTINE dlaf_finalize_aux() &
             BIND(C, name='dlaf_finalize')
-         end SUBROUTINE dlaf_finalize_aux
+         END SUBROUTINE dlaf_finalize_aux
       END INTERFACE
 
 #if defined(__DLAF)
