@@ -130,8 +130,8 @@ CONTAINS
       CHARACTER(LEN=*), INTENT(IN)                       :: diag_lib
       LOGICAL, INTENT(OUT)                               :: fallback_applied
       INTEGER, INTENT(IN)                                :: elpa_kernel, elpa_neigvec_min_input
-      INTEGER, INTENT(IN)                                :: dlaf_neigvec_min_input
       LOGICAL, INTENT(IN)                                :: elpa_qr, elpa_print, elpa_qr_unsafe
+      INTEGER, INTENT(IN)                                :: dlaf_neigvec_min_input
       REAL(KIND=dp), INTENT(IN)                          :: eps_check_diag_input
 
       fallback_applied = .FALSE.
@@ -227,9 +227,9 @@ CONTAINS
          ELSE
             CALL cp_fm_diag_cusolver(matrix, eigenvectors, eigenvalues)
          END IF
-      
+
       ELSE IF (diag_type == FM_DIAG_TYPE_DLAF) THEN
-         IF(SIZE(eigenvalues) < dlaf_neigvec_min) THEN
+         IF (SIZE(eigenvalues) < dlaf_neigvec_min) THEN
             ! Use ScaLAPACK for small matrices
             CALL cp_fm_syevd(matrix, eigenvectors, eigenvalues, info)
          ELSE
@@ -594,8 +594,8 @@ CONTAINS
       CALL ieee_set_halting_mode(IEEE_ALL, .FALSE.)
 #endif
 
-    ! ScaLAPACK
-    CALL pdsyevd('V', 'U', n, m(1, 1), 1, 1, descm, eigenvalues(1), v(1, 1), 1, 1, descv, &
+      ! ScaLAPACK
+      CALL pdsyevd('V', 'U', n, m(1, 1), 1, 1, descm, eigenvalues(1), v(1, 1), 1, 1, descv, &
                    work(1), lwork, iwork(1), liwork, myinfo)
 
 #if defined (__HAS_IEEE_EXCEPTIONS)

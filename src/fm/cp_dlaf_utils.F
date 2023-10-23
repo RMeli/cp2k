@@ -7,10 +7,7 @@
 
 MODULE cp_dlaf_utils
 
-   USE, INTRINSIC :: ISO_C_BINDING, ONLY: C_INT
-
 #include "../base/base_uses.f90"
-
    IMPLICIT NONE
 
    PRIVATE
@@ -27,18 +24,14 @@ CONTAINS
 !> \author Rocco Meli
 !> \author Mikeal Simberg
 !> \author Mathieu Taillefumier
-!***************************************************************************************************
+! **************************************************************************************************
    SUBROUTINE cp_dlaf_initialize()
-      INTERFACE
-         SUBROUTINE dlaf_init_aux() &
-            BIND(C, name='dlaf_init')
-         end SUBROUTINE dlaf_init_aux
-      end INTERFACE
+      END INTERFACE
 
 #if defined(__DLAF)
-      call dlaf_init_aux()
+      CALL dlaf_init_aux()
 #endif
-   end SUBROUTINE cp_dlaf_initialize
+      END SUBROUTINE cp_dlaf_initialize
 
 !***************************************************************************************************
 !> \brief Finalize DLA-Future and pika runtime
@@ -46,64 +39,50 @@ CONTAINS
 !> \author Mikeal Simberg
 !> \author Mathieu Taillefumier
 !***************************************************************************************************
-   SUBROUTINE cp_dlaf_finalize()
-      INTERFACE
-         SUBROUTINE dlaf_finalize_aux() &
-            BIND(C, name='dlaf_finalize')
-         end SUBROUTINE dlaf_finalize_aux
-      END INTERFACE
+      SUBROUTINE cp_dlaf_finalize()
+         END INTERFACE
 
 #if defined(__DLAF)
-      CALL dlaf_finalize_aux()
+         CALL dlaf_finalize_aux()
 #endif
-   END SUBROUTINE cp_dlaf_finalize
+      END SUBROUTINE cp_dlaf_finalize
 
 !***************************************************************************************************
 !> \brief Create DLA-Future grid from BLACS context
+!> \param blacs_context ...
 !> \author Rocco Meli
 !> \author Mikeal Simberg
 !> \author Mathieu Taillefumier
-!***************************************************************************************************
-   SUBROUTINE cp_dlaf_create_grid(blacs_context)
-      INTEGER, INTENT(IN) :: blacs_context
+! **************************************************************************************************
+      SUBROUTINE cp_dlaf_create_grid(blacs_context)
+      INTEGER, INTENT(IN)                                :: blacs_context
 
-      INTERFACE
-         SUBROUTINE dlaf_create_grid(blacs_contxt) &
-            BIND(C, name='dlaf_create_grid_from_blacs')
-            IMPORT :: C_INT
-            INTEGER(KIND=C_INT), VALUE :: blacs_contxt
-         END SUBROUTINE
-      END INTERFACE
+         END INTERFACE
 
 #if defined(__DLAF)
-      CALL dlaf_create_grid(blacs_context)
+         CALL dlaf_create_grid(blacs_context)
 #else
-      MARK_USED(blacs_context)
+         MARK_USED(blacs_context)
 #endif
-   END SUBROUTINE cp_dlaf_create_grid
+      END SUBROUTINE cp_dlaf_create_grid
 
 !***************************************************************************************************
 !> \brief Free DLA-Future grid corresponding to BLACS context
+!> \param blacs_context ...
 !> \author Rocco Meli
 !> \author Mikeal Simberg
 !> \author Mathieu Taillefumier
-!***************************************************************************************************
-   SUBROUTINE cp_dlaf_free_grid(blacs_context)
-      INTEGER, INTENT(IN) :: blacs_context
+! **************************************************************************************************
+      SUBROUTINE cp_dlaf_free_grid(blacs_context)
+      INTEGER, INTENT(IN)                                :: blacs_context
 
-      INTERFACE
-         SUBROUTINE dlaf_free_grid(blacs_contxt) &
-            BIND(C, name='dlaf_free_grid')
-            IMPORT :: C_INT
-            INTEGER(KIND=C_INT), VALUE :: blacs_contxt
-         END SUBROUTINE
-      END INTERFACE
+         END INTERFACE
 
 #if defined(__DLAF)
-      CALL dlaf_free_grid(blacs_context)
+         CALL dlaf_free_grid(blacs_context)
 #else
-      MARK_USED(blacs_context)
+         MARK_USED(blacs_context)
 #endif
-   END SUBROUTINE cp_dlaf_free_grid
+      END SUBROUTINE cp_dlaf_free_grid
 
-END MODULE cp_dlaf_utils
+   END MODULE cp_dlaf_utils
