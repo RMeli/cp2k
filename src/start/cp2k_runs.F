@@ -19,8 +19,6 @@ MODULE cp2k_runs
                                               cp2k_year
    USE cp_control_types,                ONLY: dft_control_type
    USE cp_dbcsr_cp2k_link,              ONLY: cp_dbcsr_config
-   USE cp_dlaf_utils,                   ONLY: cp_dlaf_finalize,&
-                                              cp_dlaf_initialize
    USE cp_files,                        ONLY: close_file,&
                                               open_file
    USE cp_log_handling,                 ONLY: cp_get_default_logger,&
@@ -131,6 +129,7 @@ MODULE cp2k_runs
    USE rt_propagation,                  ONLY: rt_prop_setup
    USE sirius_interface,                ONLY: cp_sirius_finalize,&
                                               cp_sirius_init
+   USE cp_dlaf_utils,                   ONLY: cp_dlaf_initialize, cp_dlaf_finalize
    USE swarm,                           ONLY: run_swarm
    USE tamc_run,                        ONLY: qs_tamc
    USE tmc_setup,                       ONLY: do_analyze_files,&
@@ -284,7 +283,7 @@ CONTAINS
 #ifdef __DLAF
          CALL cp_dlaf_finalize()
 #endif
-
+         
          CALL pw_gpu_finalize()
          CALL pw_fpga_finalize()
          CALL farming_run(input_declaration, root_section, para_env, initial_variables)

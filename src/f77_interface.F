@@ -26,8 +26,6 @@ MODULE f77_interface
    USE cell_methods,                    ONLY: init_cell
    USE cell_types,                      ONLY: cell_type
    USE cp2k_info,                       ONLY: get_runtime_info
-   USE cp_dlaf_utils,                   ONLY: cp_dlaf_finalize,&
-                                              cp_dlaf_initialize
    USE cp_error_handling,               ONLY: cp_error_handling_setup
    USE cp_files,                        ONLY: init_preconnection_list,&
                                               open_file
@@ -140,6 +138,7 @@ MODULE f77_interface
                                               timings_register_hooks
    USE timings_types,                   ONLY: timer_env_type
    USE virial_types,                    ONLY: virial_type
+   USE cp_dlaf_utils,                   ONLY: cp_dlaf_initialize, cp_dlaf_finalize
 #include "./base/base_uses.f90"
 
    IMPLICIT NONE
