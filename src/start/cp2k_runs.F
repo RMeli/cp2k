@@ -130,8 +130,6 @@ MODULE cp2k_runs
    USE sirius_interface,                ONLY: cp_sirius_finalize,&
                                               cp_sirius_init
    USE cp_dlaf_utils,                   ONLY: cp_dlaf_initialize, cp_dlaf_finalize
-   USE string_utilities,                ONLY: html_entity_table,&
-                                              write_html_tables
    USE swarm,                           ONLY: run_swarm
    USE tamc_run,                        ONLY: qs_tamc
    USE tmc_setup,                       ONLY: do_analyze_files,&
