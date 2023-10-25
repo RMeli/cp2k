@@ -6,9 +6,7 @@
 !--------------------------------------------------------------------------------------------------!
 
 MODULE cp_dlaf_utils
-
    USE, INTRINSIC :: ISO_C_BINDING, ONLY: C_INT
-
 #include "../base/base_uses.f90"
 
    IMPLICIT NONE
@@ -22,12 +20,12 @@ MODULE cp_dlaf_utils
 
 CONTAINS
 
-!***************************************************************************************************
+! **************************************************************************************************
 !> \brief Initialize DLA-Future and pika runtime
 !> \author Rocco Meli
 !> \author Mikeal Simberg
 !> \author Mathieu Taillefumier
-!***************************************************************************************************
+! **************************************************************************************************
    SUBROUTINE cp_dlaf_initialize()
       INTERFACE
          SUBROUTINE dlaf_init_aux() &
@@ -42,12 +40,12 @@ CONTAINS
 #endif
    END SUBROUTINE cp_dlaf_initialize
 
-!***************************************************************************************************
+! **************************************************************************************************
 !> \brief Finalize DLA-Future and pika runtime
 !> \author Rocco Meli
 !> \author Mikeal Simberg
 !> \author Mathieu Taillefumier
-!***************************************************************************************************
+! **************************************************************************************************
    SUBROUTINE cp_dlaf_finalize()
       INTERFACE
          SUBROUTINE dlaf_finalize_aux() &
@@ -62,12 +60,12 @@ CONTAINS
 #endif
    END SUBROUTINE cp_dlaf_finalize
 
-!***************************************************************************************************
+! **************************************************************************************************
 !> \brief Create DLA-Future grid from BLACS context
 !> \author Rocco Meli
 !> \author Mikeal Simberg
 !> \author Mathieu Taillefumier
-!***************************************************************************************************
+! **************************************************************************************************
    SUBROUTINE cp_dlaf_create_grid(blacs_context)
       INTEGER, INTENT(IN) :: blacs_context
 
@@ -87,12 +85,12 @@ CONTAINS
 #endif
    END SUBROUTINE cp_dlaf_create_grid
 
-!***************************************************************************************************
+! **************************************************************************************************
 !> \brief Free DLA-Future grid corresponding to BLACS context
 !> \author Rocco Meli
 !> \author Mikeal Simberg
 !> \author Mathieu Taillefumier
-!***************************************************************************************************
+! **************************************************************************************************
    SUBROUTINE cp_dlaf_free_grid(blacs_context)
       INTEGER, INTENT(IN) :: blacs_context
 
