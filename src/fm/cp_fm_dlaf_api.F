@@ -7,7 +7,7 @@
 
 MODULE cp_fm_dlaf_api
 
-   USE ISO_C_BINDING, ONLY: C_PTR, C_INT, C_DOUBLE, C_CHAR, C_FLOAT, C_LOC
+   USE, INTRINSIC :: ISO_C_BINDING, ONLY: C_PTR, C_INT, C_DOUBLE, C_CHAR, C_FLOAT, C_LOC
 
    USE cp_fm_diag_utils, ONLY: cp_fm_redistribute_start, cp_fm_redistribute_end
    USE cp_blacs_env, ONLY: cp_blacs_env_type
