@@ -13,7 +13,7 @@ MODULE cp_dlaf_utils
 
    PRIVATE
 
-   CHARACTER(len=*), PARAMETER, PRIVATE :: moduleN = 'cp_dlaf_utils'
+   CHARACTER(len=*), PARAMETER, PRIVATE :: moduleN = "cp_dlaf_utils"
 
    PUBLIC :: cp_dlaf_initialize, cp_dlaf_finalize
    PUBLIC :: cp_dlaf_create_grid, cp_dlaf_free_grid
@@ -29,7 +29,7 @@ CONTAINS
    SUBROUTINE cp_dlaf_initialize()
       INTERFACE
          SUBROUTINE dlaf_init_aux() &
-            BIND(C, name='dlaf_init')
+            BIND(C, name="dlaf_init")
          END SUBROUTINE dlaf_init_aux
       END INTERFACE
 
