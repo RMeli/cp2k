@@ -1,7 +1,12 @@
-MODULE cp_dlaf_utils
-   USE, INTRINSIC :: ISO_C_BINDING, ONLY: C_INT
-#include "src/base/base_uses.f90"
+!--------------------------------------------------------------------------------------------------!
+!   CP2K: A general program to perform molecular dynamics simulations                              !
+!   Copyright 2000-2023 CP2K developers group <https://cp2k.org>                                   !
+!                                                                                                  !
+!   SPDX-License-Identifier: GPL-2.0-or-later                                                      !
+!--------------------------------------------------------------------------------------------------!
 
+MODULE cp_dlaf_utils
+#include "src/base/base_uses.f90"
    IMPLICIT NONE
 
    PRIVATE
@@ -12,13 +17,13 @@ MODULE cp_dlaf_utils
 
 CONTAINS
 
-   SUBROUTINE cp_dlaf_initialzie()
+   SUBROUTINE cp_dlaf_initialize()
       INTERFACE
          SUBROUTINE dlaf_init_aux() &
             BIND(C, name='dlaf_init')
          END SUBROUTINE dlaf_init_aux
       END INTERFACE
 
-      call dlaf_init_aux()
-   END SUBROUTINE cp_dlaf_initialzie
+      CALL dlaf_init_aux()
+   END SUBROUTINE cp_dlaf_initialize
 END MODULE cp_dlaf_utils
