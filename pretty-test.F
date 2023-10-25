@@ -15,8 +15,7 @@ MODULE cp_dlaf_utils
 
    CHARACTER(len=*), PARAMETER, PRIVATE :: moduleN = "cp_dlaf_utils"
 
-   PUBLIC :: cp_dlaf_initialize, cp_dlaf_finalize
-   PUBLIC :: cp_dlaf_create_grid, cp_dlaf_free_grid
+   PUBLIC :: cp_dlaf_initialize
 
 CONTAINS
 
