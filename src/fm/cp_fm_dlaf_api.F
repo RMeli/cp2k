@@ -23,14 +23,10 @@ MODULE cp_fm_dlaf_api
 
    CHARACTER(len=*), PARAMETER, PRIVATE :: moduleN = 'cp_fm_dlaf_api'
 
-#if defined(__DLAF)
    PUBLIC :: cp_pdpotrf_dlaf, cp_pspotrf_dlaf
-#endif
    PUBLIC :: cp_fm_diag_dlaf
 
 CONTAINS
-
-#if defined(__DLAF)
 
 !***************************************************************************************************
 !> \brief Cholesky factorization using DLA-Future
@@ -42,30 +38,37 @@ CONTAINS
       CHARACTER, INTENT(IN) ::           uplo
       INTEGER, INTENT(IN)       ::       ia, ja, n
       INTEGER, TARGET     ::      info
-      INTEGER, dimension(9)       ::        DESCA
-      REAL(KIND=dp), DIMENSION(:, :), TARGET   :: A
+      INTEGER, dimension(9)       ::        desca
+      REAL(KIND=dp), DIMENSION(:, :), TARGET   :: a
 
       INTERFACE
-         SUBROUTINE pdpotrf_dlaf(UPLO, N, A, IA, JA, DESCA, INFO) &
+         SUBROUTINE pdpotrf_dlaf(uplo, n, a, ia, ja, desca, info) &
             BIND(C, name='dlaf_pdpotrf_wrapper')
             IMPORT :: C_PTR, C_INT, C_DOUBLE
-            INTEGER(KIND=C_INT), VALUE :: UPLO
-            INTEGER(KIND=C_INT), VALUE      ::        IA, JA, N
-            TYPE(C_PTR), VALUE ::       INFO
-            INTEGER(kind=C_INT), DIMENSION(*)         :: DESCA
-            TYPE(C_PTR), VALUE ::              A
+            INTEGER(KIND=C_INT), VALUE :: uplo
+            INTEGER(KIND=C_INT), VALUE      ::        ia, ja, n
+            TYPE(C_PTR), VALUE ::       info
+            INTEGER(kind=C_INT), DIMENSION(*)         :: desca
+            TYPE(C_PTR), VALUE ::              a
          END SUBROUTINE pdpotrf_dlaf
       END INTERFACE
 
-#if __GNUC__ >= 9
-      CPASSERT(IS_CONTIGUOUS(A))
-#endif
-
+#if defined(__DLAF)
       IF (uplo == "L") THEN
          CALL pdpotrf_dlaf(0, N, C_LOC(A(1, 1)), IA, JA, DESCA, C_LOC(INFO))
       ELSE IF (uplo == "U") THEN
          CALL pdpotrf_dlaf(1, N, C_LOC(A(1, 1)), IA, JA, DESCA, C_LOC(INFO))
       END IF
+#else
+      MARK_USED(uplo)
+      MARK_USED(n)
+      MARK_USED(a)
+      MARK_USED(ia)
+      MARK_USED(ja)
+      MARK_USED(desca)
+      MARK_USED(info)
+      CPABORT("CP2K compiled without the DLA-Future library.")
+#endif
    END SUBROUTINE cp_pdpotrf_dlaf
 
 !***************************************************************************************************
@@ -74,33 +77,42 @@ CONTAINS
 !> \author Mikeal Simberg
 !> \author Mathieu Taillefumier
 !***************************************************************************************************
-   SUBROUTINE cp_pspotrf_dlaf(UPLO, N, A, IA, JA, DESCA, INFO)
-      CHARACTER, INTENT(IN) ::           UPLO
-      INTEGER, INTENT(IN)       ::       IA, JA, N
-      INTEGER, TARGET     ::      INFO
-      INTEGER, dimension(9)      ::        DESCA
-      REAL, dimension(:, :), TARGET    ::              A
+   SUBROUTINE cp_pspotrf_dlaf(uplo, n, a, ia, ja, desca, info)
+      CHARACTER, INTENT(IN) ::           uplo
+      INTEGER, INTENT(IN)       ::       ia, ja, n
+      INTEGER, TARGET     ::      info
+      INTEGER, dimension(9)      ::        desca
+      REAL, dimension(:, :), TARGET    ::              a
 
       INTERFACE
-         SUBROUTINE pspotrf_dlaf(UPLO, N, A, IA, JA, DESCA, INFO) &
+         SUBROUTINE pspotrf_dlaf(uplo, n, a, ia, ja, desca, info) &
             BIND(C, name='dlaf_pspotrf_wrapper')
             IMPORT :: C_PTR, C_INT, C_DOUBLE
-            INTEGER(KIND=C_INT), VALUE :: UPLO
-            INTEGER(KIND=C_INT), VALUE      ::        IA, JA, N
-            TYPE(C_PTR), VALUE    ::       INFO
-            INTEGER(kind=C_INT), DIMENSION(*)         :: DESCA
-            TYPE(C_PTR), VALUE   ::              A
+            INTEGER(KIND=C_INT), VALUE :: uplo
+            INTEGER(KIND=C_INT), VALUE      ::        ia, ja, n
+            TYPE(C_PTR), VALUE    ::       info
+            INTEGER(kind=C_INT), DIMENSION(*)         :: desca
+            TYPE(C_PTR), VALUE   ::              a
          END SUBROUTINE pspotrf_dlaf
       END INTERFACE
 
+#if defined(__DLAF)
       IF (uplo == "L") THEN
-         CALL pspotrf_dlaf(0, N, C_LOC(A(1, 1)), IA, JA, DESCA, C_LOC(INFO))
+         CALL pspotrf_dlaf(0, n, C_LOC(a(1, 1)), ia, ja, desca, C_LOC(info))
       ELSE IF (uplo == "U") THEN
-         CALL pspotrf_dlaf(1, N, C_LOC(A(1, 1)), IA, JA, DESCA, C_LOC(INFO))
+         CALL pspotrf_dlaf(1, n, C_LOC(a(1, 1)), ia, ja, desca, C_LOC(info))
       END IF
-   END SUBROUTINE cp_pspotrf_dlaf
-
+#else
+      MARK_USED(uplo)
+      MARK_USED(n)
+      MARK_USED(a)
+      MARK_USED(ia)
+      MARK_USED(ja)
+      MARK_USED(desca)
+      MARK_USED(info)
+      CPABORT("CP2K compiled without the DLA-Future library.")
 #endif
+   END SUBROUTINE cp_pspotrf_dlaf
 
    SUBROUTINE cp_fm_diag_dlaf(matrix, eigenvectors, eigenvalues)
 
@@ -198,7 +210,7 @@ CONTAINS
          z=C_LOC(z(1, 1)), iz=1, jz=1, descz=descz, &
          info=C_LOC(info) &
          )
-      
+
       call timestop(dlaf_handle)
 
       IF (info /= 0) THEN
