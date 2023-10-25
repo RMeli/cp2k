@@ -7,7 +7,7 @@
 
 MODULE cp_dlaf_utils
    USE, INTRINSIC :: ISO_C_BINDING, ONLY: C_INT
-#include "../base/base_uses.f90"
+#include "src/base/base_uses.f90"
 
    IMPLICIT NONE
 
