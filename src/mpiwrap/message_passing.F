@@ -1004,6 +1004,18 @@ CONTAINS
 !$       INTEGER                                  :: provided_tsl
 !$       LOGICAL                                  :: no_threading_support
 
+#if defined(__DLAF)
+         ! DLA-Future requires that the MPI library supports
+         ! THREAD_MULTIPLE mode
+!$OMP MASTER
+!$       CALL mpi_init_thread(MPI_THREAD_MULTIPLE, provided_tsl, ierr)
+!$       IF (ierr /= 0) CALL mp_stop(ierr, "mpi_init_thread @ mp_world_init")
+!$       IF (provided_tsl .LT. MPI_THREAD_MULTIPLE) THEN
+!$          CALL mp_stop(0, "MPI library does not support the requested level of threading (MPI_THREAD_MULTIPLE).")
+!$       END IF
+!$OMP END MASTER
+
+#else
 #if defined(__NO_MPI_THREAD_SUPPORT_CHECK)
          ! Hack that does not request or check MPI thread support level.
          ! User asserts that the MPI library will work correctly with
@@ -1020,22 +1032,22 @@ CONTAINS
 !
 !$       no_threading_support = .FALSE.
 #endif
-         no_threading_support = .FALSE.
-         IF (no_threading_support) THEN
+!$       IF (no_threading_support) THEN
             CALL mpi_init(ierr)
             IF (ierr /= 0) CALL mp_stop(ierr, "mpi_init @ mp_world_init")
-         ELSE
+!$       ELSE
 !$OMP MASTER
-            CALL mpi_init_thread(MPI_THREAD_MULTIPLE, provided_tsl, ierr)
-            IF (ierr /= 0) CALL mp_stop(ierr, "mpi_init_thread @ mp_world_init")
-            IF (provided_tsl .LT. MPI_THREAD_MULTIPLE) THEN
-               CALL mp_stop(0, "MPI library does not support the requested level of threading (MPI_THREAD_MULTIPLE).")
-            END IF
+!$          CALL mpi_init_thread(MPI_THREAD_SERIALIZED, provided_tsl, ierr)
+!$          IF (ierr /= 0) CALL mp_stop(ierr, "mpi_init_thread @ mp_world_init")
+!$          IF (provided_tsl .LT. MPI_THREAD_SERIALIZED) THEN
+!$             CALL mp_stop(0, "MPI library does not support the requested level of threading (MPI_THREAD_SERIALIZED).")
+!$          END IF
 !$OMP END MASTER
-         END IF
+!$       END IF
+#endif
          CALL mpi_comm_set_errhandler(MPI_COMM_WORLD, MPI_ERRORS_RETURN, ierr)
          IF (ierr /= 0) CALL mp_stop(ierr, "mpi_comm_set_errhandler @ mp_world_init")
-         debug_comm_count = 1
+
 #endif
          debug_comm_count = 1
          mp_comm = mp_comm_world
