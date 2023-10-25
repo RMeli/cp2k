@@ -123,21 +123,13 @@ CONTAINS
 
       INTEGER                                  :: handle, n, nmo
       REAL(KIND=dp), ALLOCATABLE, DIMENSION(:), TARGET :: eig
-!      TYPE(cp_fm_type)                         :: eigenvectors_new, matrix_new
 
       CALL timeset(routineN, handle)
 
       n = matrix%matrix_struct%nrow_global
       ALLOCATE (eig(n))
 
-!      CALL cp_fm_redistribute_start(matrix, eigenvectors, matrix_new, eigenvectors_new)
-
-      ! Call scalapack on CPUs that hold the new matrix
-      IF (ASSOCIATED(matrix%matrix_struct)) THEN
-         CALL cp_fm_diag_dlaf_base(matrix, eigenvectors, eig)
-      END IF
-
-!      CALL cp_fm_redistribute_end(matrix, eigenvectors, eig, matrix_new, eigenvectors_new)
+      CALL cp_fm_diag_dlaf_base(matrix, eigenvectors, eig)
 
       nmo = SIZE(eigenvalues, 1)
       IF (nmo > n) THEN
