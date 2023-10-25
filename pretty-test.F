@@ -15,10 +15,17 @@ MODULE cp_dlaf_utils
 
    CHARACTER(len=*), PARAMETER, PRIVATE :: moduleN = "cp_dlaf_utils"
 
-   PUBLIC :: cp_dlaf_initialize
+   PUBLIC :: cp_dlaf_initialize, cp_dlaf_finalize
+   PUBLIC :: cp_dlaf_create_grid, cp_dlaf_free_grid
 
 CONTAINS
 
+! **************************************************************************************************
+!> \brief Initialize DLA-Future and pika runtime
+!> \author Rocco Meli
+!> \author Mikeal Simberg
+!> \author Mathieu Taillefumier
+! **************************************************************************************************
    SUBROUTINE cp_dlaf_initialize()
       INTERFACE
          SUBROUTINE dlaf_init_aux() &
@@ -26,7 +33,11 @@ CONTAINS
          END SUBROUTINE dlaf_init_aux
       END INTERFACE
 
+#if defined(__DLAF)
       call dlaf_init_aux()
+#else
+      CPABORT("CP2K compiled without the DLA-Future library.")
+#endif
    END SUBROUTINE cp_dlaf_initialize
 
 END MODULE cp_dlaf_utils
