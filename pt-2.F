@@ -24,8 +24,6 @@ CONTAINS
          END SUBROUTINE dlaf_init_aux
       END INTERFACE
 
-      CALL something_something()
-
 #if defined(__DLAF)
       CALL dlaf_init_aux()
 #endif
