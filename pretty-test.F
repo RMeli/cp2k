@@ -13,18 +13,12 @@ MODULE cp_dlaf_utils
 
    PRIVATE
 
-   CHARACTER(len=*), PARAMETER, PRIVATE :: moduleN = "cp_dlaf_utils"
+   CHARACTER(len=*), PARAMETER, PRIVATE :: moduleN = 'cp_dlaf_utils'
 
    PUBLIC :: cp_dlaf_initialize
 
 CONTAINS
 
-! **************************************************************************************************
-!> \brief Initialize DLA-Future and pika runtime
-!> \author Rocco Meli
-!> \author Mikeal Simberg
-!> \author Mathieu Taillefumier
-! **************************************************************************************************
    SUBROUTINE cp_dlaf_initialize()
       INTERFACE
          SUBROUTINE dlaf_init_aux() &
