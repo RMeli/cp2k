@@ -41,6 +41,9 @@ CONTAINS
       INTEGER, dimension(9)       ::        desca
       REAL(KIND=dp), DIMENSION(:, :), TARGET   :: a
 
+      CHARACTER(len=*), PARAMETER :: routineN = 'cp_pdpotrf_dlaf'
+      INTEGER :: handle
+
       INTERFACE
          SUBROUTINE pdpotrf_dlaf(uplo, n, a, ia, ja, desca, info) &
             BIND(C, name='dlaf_pdpotrf_wrapper')
@@ -52,6 +55,8 @@ CONTAINS
             TYPE(C_PTR), VALUE ::              a
          END SUBROUTINE pdpotrf_dlaf
       END INTERFACE
+
+      call timeset(routineN, handle)
 
 #if defined(__DLAF)
       IF (uplo == "L") THEN
@@ -69,6 +74,7 @@ CONTAINS
       MARK_USED(info)
       CPABORT("CP2K compiled without the DLA-Future library.")
 #endif
+      call timestop(handle)
    END SUBROUTINE cp_pdpotrf_dlaf
 
 !***************************************************************************************************
@@ -84,6 +90,9 @@ CONTAINS
       INTEGER, dimension(9)      ::        desca
       REAL, dimension(:, :), TARGET    ::              a
 
+      CHARACTER(len=*), PARAMETER :: routineN = 'cp_pspotrf_dlaf'
+      INTEGER :: handle
+
       INTERFACE
          SUBROUTINE pspotrf_dlaf(uplo, n, a, ia, ja, desca, info) &
             BIND(C, name='dlaf_pspotrf_wrapper')
@@ -95,6 +104,8 @@ CONTAINS
             TYPE(C_PTR), VALUE   ::              a
          END SUBROUTINE pspotrf_dlaf
       END INTERFACE
+
+      call timeset(routineN, handle)
 
 #if defined(__DLAF)
       IF (uplo == "L") THEN
@@ -112,6 +123,7 @@ CONTAINS
       MARK_USED(info)
       CPABORT("CP2K compiled without the DLA-Future library.")
 #endif
+      call timestop(handle)
    END SUBROUTINE cp_pspotrf_dlaf
 
    SUBROUTINE cp_fm_diag_dlaf(matrix, eigenvectors, eigenvalues)
