@@ -17,10 +17,10 @@
 ! **************************************************************************************************
 MODULE cp_blacs_types
 
-   USE cp_dlaf_utils, ONLY: cp_dlaf_create_grid, &
-                            cp_dlaf_free_grid
-   USE kinds, ONLY: dp
-   USE message_passing, ONLY: mp_comm_type
+   USE cp_dlaf_utils,                   ONLY: cp_dlaf_create_grid,&
+                                              cp_dlaf_free_grid
+   USE kinds,                           ONLY: dp
+   USE message_passing,                 ONLY: mp_comm_type
 #include "../base/base_uses.f90"
 
    IMPLICIT NONE
