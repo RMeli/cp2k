@@ -37,6 +37,8 @@ CONTAINS
 
 #if defined(__DLAF)
       call dlaf_init_aux()
+#else
+      CPABORT("CP2K compiled without the DLA-Future library.")
 #endif
    END SUBROUTINE cp_dlaf_initialize
 
@@ -55,6 +57,8 @@ CONTAINS
 
 #if defined(__DLAF)
       CALL dlaf_finalize_aux()
+#else
+      CPABORT("CP2K compiled without the DLA-Future library.")
 #endif
    END SUBROUTINE cp_dlaf_finalize
 
@@ -79,6 +83,7 @@ CONTAINS
       CALL dlaf_create_grid(blacs_context)
 #else
       MARK_USED(blacs_context)
+      CPABORT("CP2K compiled without the DLA-Future library.")
 #endif
    END SUBROUTINE cp_dlaf_create_grid
 
@@ -103,6 +108,7 @@ CONTAINS
       CALL dlaf_free_grid(blacs_context)
 #else
       MARK_USED(blacs_context)
+      CPABORT("CP2K compiled without the DLA-Future library.")
 #endif
    END SUBROUTINE cp_dlaf_free_grid
 
