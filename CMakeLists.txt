@@ -580,7 +580,7 @@ if(CP2K_USE_VORI)
 endif()
 
 # check for DLA-Future package
-if (CP2K_USE_DLAF)
+if(CP2K_USE_DLAF)
   find_package(DLAF REQUIRED)
 endif()
 
