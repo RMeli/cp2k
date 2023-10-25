@@ -24,6 +24,8 @@ CONTAINS
          END SUBROUTINE dlaf_init_aux
       END INTERFACE
 
+#if defined(__DLAF)
       CALL dlaf_init_aux()
+#endif
    END SUBROUTINE cp_dlaf_initialize
 END MODULE cp_dlaf_utils
