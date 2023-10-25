@@ -115,7 +115,10 @@ option(CP2K_USE_DLAF "Use DLA-Future fr cholesky and / or eigensolver" OFF)
 option(CP2K_USE_LIBXSMM "Use libxsmm for small gemms (supports x86 platforms)"
        OFF)
 option(BUILD_SHARED_LIBS "Build cp2k shared library" ON)
-
+option(
+  CP2K_USE_FFTW3_WITH_MKL
+  "MKL has its own compatible implementation of the fftw. This option when ON will use the original implementation of the fftw library"
+  OFF)
 cmake_dependent_option(CP2K_ENABLE_ELPA_OPENMP_SUPPORT
                        "Enable elpa openmp support" ON "CP2K_USE_ELPA" OFF)
 cmake_dependent_option(CP2K_ENABLE_FFTW3_OPENMP_SUPPORT
@@ -583,27 +586,35 @@ endif()
 
 # FFTW3
 
+# we set this variable to ON when we want fftw3 support (with or without MKL).
+set(CP2K_USE_FFTW3_ OFF)
 if(CP2K_USE_FFTW3)
-  find_package(Fftw REQUIRED)
-  if(CP2K_ENABLE_FFTW3_THREADS_SUPPORT AND CP2K_ENABLE_FFTW3_OPENMP_SUPPORT)
-    message(
-      FATAL_ERROR
-        "Fftw3 threads and openmp supports can not be used at the same time")
-  endif()
+  if(NOT CP2K_BLAS_VENDOR MATCHES "MKL" OR CP2K_USE_FFTW3_WITH_MKL)
+    find_package(Fftw REQUIRED)
+    if(CP2K_ENABLE_FFTW3_THREADS_SUPPORT AND CP2K_ENABLE_FFTW3_OPENMP_SUPPORT)
+      message(
+        FATAL_ERROR
+          "Fftw3 threads and openmp supports can not be used at the same time")
+    endif()
 
-  if((CP2K_ENABLE_FFTW3_THREADS_SUPPORT) AND (NOT TARGET
-                                              cp2k::FFTW3::fftw3_threads))
-    message(
-      FATAL_ERROR
-        "fftw3 was compiled without multithreading support (--enable-threads option in the fftw build system)."
-    )
-  endif()
+    if((CP2K_ENABLE_FFTW3_THREADS_SUPPORT) AND (NOT TARGET
+                                                cp2k::FFTW3::fftw3_threads))
+      message(
+        FATAL_ERROR
+          "fftw3 was compiled without multithreading support (--enable-threads option in the fftw build system)."
+      )
+    endif()
 
-  if((CP2K_ENABLE_FFTW3_OPENMP_SUPPORT) AND (NOT TARGET cp2k::FFTW3::fftw3_omp))
-    message(
-      FATAL_ERROR
-        "fftw3 was compiled without openmp support  (--enable-openmp option in the fftw build system)."
-    )
+    if((CP2K_ENABLE_FFTW3_OPENMP_SUPPORT) AND (NOT TARGET cp2k::FFTW3::fftw3_omp
+                                              ))
+      message(
+        FATAL_ERROR
+          "fftw3 was compiled without openmp support  (--enable-openmp option in the fftw build system)."
+      )
+    endif()
+    set(CP2K_USE_FFTW3_ ON)
+  else()
+    message("-- Using the MKL implementation of FFTW3.")
   endif()
 endif()
 
@@ -938,8 +949,8 @@ endif()
 
 if(CP2K_ENABLE_REGTESTS OR cp2k_TESTS)
   message("\n\n" "To run the regtests you need to run the following commands\n"
-          "\n\n cd ..\n"
-          "./tests/do_regtest.py ${__cp2k_cmake_name} ${__cp2k_cmake_exts}\n\n")
+          "\n\n cd ..\n" " export CP2K_DATA_DIR=${CMAKE_SOURCE_DIR}/data/\n"
+          " ./tests/do_regtest.py ${__cp2k_cmake_name} ${__cp2k_ext}\n\n")
 endif()
 
 # files needed for cmake

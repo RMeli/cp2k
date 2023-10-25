@@ -1553,9 +1553,9 @@ target_link_libraries(
     $<$<BOOL:${CP2K_USE_SPGLIB}>:cp2k::LIBSPG::libspg>
     $<$<BOOL:${CP2K_USE_LIBXC}>:cp2k::Libxc::xc>
     $<$<BOOL:${CP2K_USE_ELPA}>:cp2k::ELPA::elpa>
-    $<$<BOOL:${CP2K_USE_FFTW3}>:cp2k::FFTW3::fftw3>
-    $<$<BOOL:${CP2K_ENABLE_FFTW3_THREADS_SUPPORT}>:cp2k::FFTW3::fftw3_threads>
-    $<$<BOOL:${CP2K_ENABLE_FFTW3_OPENMP_SUPPORT}>:cp2k::FFTW3::fftw3_omp>
+    $<$<BOOL:${CP2K_USE_FFTW3_}>:cp2k::FFTW3::fftw3>
+    $<$<AND:$<BOOL:${CP2K_USE_FFTW3_}>,$<BOOL:${CP2K_ENABLE_FFTW3_THREADS_SUPPORT}>>:cp2k::FFTW3::fftw3_threads>
+    $<$<AND:$<BOOL:${CP2K_USE_FFTW3_}>,$<BOOL:${CP2K_ENABLE_FFTW3_OPENMP_SUPPORT}>>:cp2k::FFTW3::fftw3_omp>
     $<$<BOOL:${CP2K_USE_SPLA}>:SPLA::spla>
     $<$<BOOL:${CP2K_USE_LIBINT2}>:cp2k::Libint2::int2>
     $<$<BOOL:${CP2K_USE_TORCH}>:${TORCH_LIBRARIES}>
@@ -1564,7 +1564,8 @@ target_link_libraries(
     $<$<BOOL:${CP2K_USE_DLAF}>:DLAF::DLAF>
     DBCSR::dbcsr
     $<$<BOOL:${CP2K_USE_MPI}>:cp2k::SCALAPACK::scalapack>
-    cp2k_linalg_libs)
+    cp2k_linalg_libs
+    $<$<AND:$<CONFIG:COVERAGE>,$<Fortran_COMPILER_ID:GNU>>:gcov>)
 
 string(TIMESTAMP CP2K_TIMESTAMP "%Y-%m-%d %H:%M:%S")
 
@@ -1595,7 +1596,7 @@ target_compile_definitions(
          $<$<BOOL:${CP2K_USE_SPLA_GEMM_OFFLOADING}>:__OFFLOAD_GEMM>
          $<$<BOOL:${CP2K_USE_ELPA}>:__ELPA>
          $<$<BOOL:${CP2K_USE_LIBXC}>:__LIBXC>
-         $<$<BOOL:${CP2K_USE_FFTW3}>:__FFTW3>
+         $<$<BOOL:${CP2K_USE_FFTW3_}>:__FFTW3>
          $<$<BOOL:${CP2K_USE_LIBINT2}>:__LIBINT>
          $<$<BOOL:${CP2K_USE_PEXSI}>:__LIBPEXSI>
          $<$<BOOL:${CP2K_USE_LIBTORCH}>:__LIBTORCH>
@@ -1757,7 +1758,10 @@ foreach(__app grid_miniapp grid_unittest dbm_miniapp)
            $<$<BOOL:${CP2K_USE_CUDA}>:${CMAKE_CUDA_INCLUDE_DIRECTORIES}>
            $<$<BOOL:${CP2K_USE_HIP}>:${CMAKE_HIP_INCLUDE_DIRECTORIES}>)
 
-  target_link_libraries(${__app} PUBLIC cp2k_linalg_libs m)
+  target_link_libraries(
+    ${__app}
+    PUBLIC cp2k_linalg_libs
+           $<$<AND:$<CONFIG:COVERAGE>,$<Fortran_COMPILER_ID:GNU>>:gcov> m)
 endforeach()
 
 # ##############################################################################
