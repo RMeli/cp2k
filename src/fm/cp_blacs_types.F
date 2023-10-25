@@ -17,10 +17,10 @@
 ! **************************************************************************************************
 MODULE cp_blacs_types
 
-   USE cp_dlaf_utils,                   ONLY: cp_dlaf_create_grid,&
-                                              cp_dlaf_free_grid
-   USE kinds,                           ONLY: dp
-   USE message_passing,                 ONLY: mp_comm_type
+   USE cp_dlaf_utils, ONLY: cp_dlaf_create_grid, &
+                            cp_dlaf_free_grid
+   USE kinds, ONLY: dp
+   USE message_passing, ONLY: mp_comm_type
 #include "../base/base_uses.f90"
 
    IMPLICIT NONE
@@ -77,7 +77,9 @@ CONTAINS
       CALL blacs_gridinit(context_handle, order, nprow, npcol)
       this%context_handle = context_handle
 
+#if defined(__DLAF)
       CALL cp_dlaf_create_grid(context_handle)
+#endif
 #else
       MARK_USED(this)
       MARK_USED(comm)
@@ -97,7 +99,9 @@ CONTAINS
 #if defined(__SCALAPACK)
       CALL blacs_gridexit(this%context_handle)
 
+#if defined(__DLAF)
       CALL cp_dlaf_free_grid(this%context_handle)
+#endif
 #else
       MARK_USED(this)
 #endif

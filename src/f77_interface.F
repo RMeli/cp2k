@@ -287,7 +287,9 @@ CONTAINS
          CALL pw_gpu_init()
          CALL grid_library_init()
 
+#if defined(__DLAF)
          CALL cp_dlaf_initialize()
+#endif
 
          CALL dbm_library_init()
       ELSE
@@ -335,7 +337,9 @@ CONTAINS
          ierr = 0
          CALL cp_rm_default_logger()
 
+#if defined(__DLAF)
          CALL cp_dlaf_finalize()
+#endif
 
          !   *** deallocate the bibliography ***
          CALL remove_all_references()

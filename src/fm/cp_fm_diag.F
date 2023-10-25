@@ -163,10 +163,6 @@ CONTAINS
          CALL set_elpa_print(elpa_print)
       END IF
 
-      IF (diag_type == FM_DIAG_TYPE_DLAF) THEN
-         ! TODO: Initialize DLAF here?
-      END IF
-
       elpa_neigvec_min = elpa_neigvec_min_input
       dlaf_neigvec_min = dlaf_neigvec_min_input
       eps_check_diag = eps_check_diag_input
@@ -594,7 +590,6 @@ CONTAINS
       CALL ieee_set_halting_mode(IEEE_ALL, .FALSE.)
 #endif
 
-      ! ScaLAPACK
       CALL pdsyevd('V', 'U', n, m(1, 1), 1, 1, descm, eigenvalues(1), v(1, 1), 1, 1, descv, &
                    work(1), lwork, iwork(1), liwork, myinfo)
 
