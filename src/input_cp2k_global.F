@@ -23,8 +23,8 @@ MODULE input_cp2k_global
    USE cp_dbcsr_cp2k_link,              ONLY: create_dbcsr_section
    USE cp_fm_diag,                      ONLY: FM_DIAG_TYPE_CUSOLVER,&
                                               FM_DIAG_TYPE_DEFAULT,&
-                                              FM_DIAG_TYPE_ELPA,&
                                               FM_DIAG_TYPE_DLAF,&
+                                              FM_DIAG_TYPE_ELPA,&
                                               FM_DIAG_TYPE_SCALAPACK
    USE cp_fm_elpa,                      ONLY: elpa_kernel_descriptions,&
                                               elpa_kernel_ids,&
@@ -122,7 +122,7 @@ CONTAINS
                                         FM_DIAG_TYPE_SCALAPACK, &
                                         FM_DIAG_TYPE_SCALAPACK, &
                                         FM_DIAG_TYPE_CUSOLVER, &
-                                        FM_DIAG_TYPE_DLAF /), &
+                                        FM_DIAG_TYPE_DLAF/), &
                           enum_c_vals=s2a("ELPA", "ScaLAPACK", "SL", "CUSOLVER", "DLAF"), &
                           enum_desc=s2a("ELPA library", &
                                         "ScaLAPACK library", &
