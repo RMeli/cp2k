@@ -6,7 +6,7 @@
 !--------------------------------------------------------------------------------------------------!
 
 MODULE cp_dlaf_utils
-   USE, INTRINSIC :: ISO_C_BINDING, ONLY: C_INT
+   USE ISO_C_BINDING,                   ONLY: C_INT
 #include "../base/base_uses.f90"
 
    IMPLICIT NONE
@@ -28,23 +28,23 @@ CONTAINS
 ! **************************************************************************************************
    SUBROUTINE cp_dlaf_initialize()
       CHARACTER(len=*), PARAMETER :: routineN = 'cp_dlaf_initialize'
-      INTEGER :: handle
 
+      INTEGER                                            :: handle
       INTERFACE
          SUBROUTINE dlaf_init_aux() &
             BIND(C, name='dlaf_init')
          END SUBROUTINE dlaf_init_aux
       END INTERFACE
 
-      call timeset(routineN, handle)
+      CALL timeset(routineN, handle)
 
 #if defined(__DLAF)
-      call dlaf_init_aux()
+      CALL dlaf_init_aux()
 #else
       CPABORT("CP2K compiled without the DLA-Future library.")
 #endif
 
-      call timestop(handle)
+      CALL timestop(handle)
    END SUBROUTINE cp_dlaf_initialize
 
 ! **************************************************************************************************
@@ -54,16 +54,16 @@ CONTAINS
 !> \author Mathieu Taillefumier
 ! **************************************************************************************************
    SUBROUTINE cp_dlaf_finalize()
-      CHARACTER(len=*), PARAMETER :: routineN = 'cp_dlaf_finalize'
-      INTEGER :: handle
+      CHARACTER(len=*), PARAMETER                        :: routineN = 'cp_dlaf_finalize'
 
+      INTEGER                                            :: handle
       INTERFACE
          SUBROUTINE dlaf_finalize_aux() &
             BIND(C, name='dlaf_finalize')
          END SUBROUTINE dlaf_finalize_aux
       END INTERFACE
 
-      call timeset(routineN, handle)
+      CALL timeset(routineN, handle)
 
 #if defined(__DLAF)
       CALL dlaf_finalize_aux()
@@ -71,21 +71,22 @@ CONTAINS
       CPABORT("CP2K compiled without the DLA-Future library.")
 #endif
 
-      call timestop(handle)
+      CALL timestop(handle)
    END SUBROUTINE cp_dlaf_finalize
 
 ! **************************************************************************************************
 !> \brief Create DLA-Future grid from BLACS context
+!> \param blacs_context ...
 !> \author Rocco Meli
 !> \author Mikeal Simberg
 !> \author Mathieu Taillefumier
 ! **************************************************************************************************
    SUBROUTINE cp_dlaf_create_grid(blacs_context)
-      INTEGER, INTENT(IN) :: blacs_context
+      INTEGER, INTENT(IN)                                :: blacs_context
 
       CHARACTER(len=*), PARAMETER :: routineN = 'cp_dlaf_create_grid'
-      INTEGER :: handle
 
+      INTEGER                                            :: handle
       INTERFACE
          SUBROUTINE dlaf_create_grid(blacs_contxt) &
             BIND(C, name='dlaf_create_grid_from_blacs')
@@ -94,7 +95,7 @@ CONTAINS
          END SUBROUTINE
       END INTERFACE
 
-      call timeset(routineN, handle)
+      CALL timeset(routineN, handle)
 
 #if defined(__DLAF)
       CALL dlaf_create_grid(blacs_context)
@@ -103,21 +104,22 @@ CONTAINS
       CPABORT("CP2K compiled without the DLA-Future library.")
 #endif
 
-      call timestop(handle)
+      CALL timestop(handle)
    END SUBROUTINE cp_dlaf_create_grid
 
 ! **************************************************************************************************
 !> \brief Free DLA-Future grid corresponding to BLACS context
+!> \param blacs_context ...
 !> \author Rocco Meli
 !> \author Mikeal Simberg
 !> \author Mathieu Taillefumier
 ! **************************************************************************************************
    SUBROUTINE cp_dlaf_free_grid(blacs_context)
-      INTEGER, INTENT(IN) :: blacs_context
+      INTEGER, INTENT(IN)                                :: blacs_context
 
-      CHARACTER(len=*), PARAMETER :: routineN = 'cp_dlaf_free_grid'
-      INTEGER :: handle
+      CHARACTER(len=*), PARAMETER                        :: routineN = 'cp_dlaf_free_grid'
 
+      INTEGER                                            :: handle
       INTERFACE
          SUBROUTINE dlaf_free_grid(blacs_contxt) &
             BIND(C, name='dlaf_free_grid')
@@ -126,7 +128,7 @@ CONTAINS
          END SUBROUTINE
       END INTERFACE
 
-      call timeset(routineN, handle)
+      CALL timeset(routineN, handle)
 
 #if defined(__DLAF)
       CALL dlaf_free_grid(blacs_context)
@@ -135,7 +137,7 @@ CONTAINS
       CPABORT("CP2K compiled without the DLA-Future library.")
 #endif
 
-      call timestop(handle)
+      CALL timestop(handle)
    END SUBROUTINE cp_dlaf_free_grid
 
 END MODULE cp_dlaf_utils
