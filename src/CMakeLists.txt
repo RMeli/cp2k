@@ -962,9 +962,11 @@ list(
   fm/cp_cfm_diag.F
   fm/cp_cfm_basic_linalg.F
   fm/cp_cfm_types.F
+  fm/cp_dlaf_utils.F
   fm/cp_fm_basic_linalg.F
   fm/cp_fm_cholesky.F
   fm/cp_fm_cusolver_api.F
+  fm/cp_fm_dlaf_api.F
   fm/cp_fm_diag.F
   fm/cp_fm_diag_utils.F
   fm/cp_fm_elpa.F
@@ -973,7 +975,7 @@ list(
   fm/cp_fm_struct.F
   fm/cp_linked_list_fm.F)
 
-list(APPEND CP2K_SRCS_C fm/cp_fm_cusolver.c)
+list(APPEND CP2K_SRCS_C fm/cp_fm_cusolver.c fm/cp_dlaf_utils.c)
 
 list(APPEND CP2K_SRCS_F hfxbase/hfx_compression_core_methods.F
      hfxbase/hfx_contract_block.F hfxbase/hfx_contraction_methods.F)
@@ -1558,6 +1560,7 @@ target_link_libraries(
     $<$<BOOL:${CP2K_USE_TORCH}>:${TORCH_LIBRARIES}>
     $<$<BOOL:${CP2K_USE_COSMA}>:cosma::cosma_prefixed_pxgemm>
     $<$<BOOL:${CP2K_USE_COSMA}>:cosma::cosma>
+    $<$<BOOL:${CP2K_USE_DLAF}>:DLAF::DLAF>
     DBCSR::dbcsr
     $<$<BOOL:${CP2K_USE_MPI}>:cp2k::SCALAPACK::scalapack>
     cp2k_linalg_libs
@@ -1597,6 +1600,7 @@ target_compile_definitions(
          $<$<BOOL:${CP2K_USE_PEXSI}>:__LIBPEXSI>
          $<$<BOOL:${CP2K_USE_LIBTORCH}>:__LIBTORCH>
          $<$<BOOL:${CP2K_USE_COSMA}>:__COSMA>
+         $<$<BOOL:${CP2K_USE_DLAF}>:__DLAF>
          $<$<BOOL:${CP2K_USE_LIBXSMM}>:__LIBXSMM>
          $<$<STREQUAL:${CP2K_BLAS_VENDOR},MKL>:__MKL>
          $<$<STREQUAL:${CP2K_BLAS_VENDOR},Apple>:__ACCELERATE>

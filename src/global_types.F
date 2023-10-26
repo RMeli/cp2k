@@ -62,6 +62,8 @@ MODULE global_types
 !> \note
 !>      This is not but really should be passed as pointer and use reference
 !>      counting. Use it accordingly wherever possible.
+!> \par History
+!>      - Add support for DLA-Future (05.09.2023, RMeli)
 ! **************************************************************************************************
    TYPE global_environment_type
       INTEGER :: ref_count = 0
@@ -82,6 +84,7 @@ MODULE global_types
       LOGICAL :: elpa_qr = .FALSE. ! allow ELPA to use QR during diagonalization
       LOGICAL :: elpa_print = .FALSE. ! if additional information about ELPA diagonalization should be printed
       LOGICAL :: elpa_qr_unsafe = .FALSE. ! enable potentially unsafe ELPA options
+      INTEGER :: dlaf_neigvec_min = 0 ! Minimum number of eigenvectors for DLAF usage
       LOGICAL :: blacs_repeatable = .FALSE. ! will store the user preference for the repeatability of BLACS collectives
       REAL(KIND=dp) :: cp2k_start_time = 0.0_dp
       REAL(KIND=dp) :: cp2k_target_time = HUGE(0.0_dp) ! Maximum run time in seconds
