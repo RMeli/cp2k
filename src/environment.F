@@ -487,8 +487,6 @@ CONTAINS
 !> \param globenv ...
 !> \par History
 !>      06-2005 [created]
-!> \par History
-!>      - Add support for DLA-Future (05.09.2023, RMeli)
 !> \author MI
 !> \note
 !>      Should not be required anymore once everything is converted
