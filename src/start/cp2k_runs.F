@@ -19,6 +19,8 @@ MODULE cp2k_runs
                                               cp2k_year
    USE cp_control_types,                ONLY: dft_control_type
    USE cp_dbcsr_cp2k_link,              ONLY: cp_dbcsr_config
+   USE cp_dlaf_utils,                   ONLY: cp_dlaf_finalize,&
+                                              cp_dlaf_initialize
    USE cp_files,                        ONLY: close_file,&
                                               open_file
    USE cp_log_handling,                 ONLY: cp_get_default_logger,&
@@ -210,6 +212,10 @@ CONTAINS
       CALL pw_gpu_init()
       CALL pw_fpga_init()
 
+#if defined(__DLAF)
+      CALL cp_dlaf_initialize()
+#endif
+
       NULLIFY (globenv, force_env)
 
       CALL cite_reference(Hutter2014)
@@ -276,6 +282,10 @@ CONTAINS
          ! TODO: refactor cp2k's startup code
          CALL dbcsr_finalize_lib()
          IF (method_name_id == do_sirius) CALL cp_sirius_finalize()
+
+#ifdef __DLAF
+         CALL cp_dlaf_finalize()
+#endif
 
          CALL pw_gpu_finalize()
          CALL pw_fpga_finalize()
@@ -418,6 +428,9 @@ CONTAINS
       CALL pw_gpu_finalize()
       CALL pw_fpga_finalize()
 
+#ifdef __DLAF
+      CALL cp_dlaf_finalize()
+#endif
       CALL dbcsr_print_statistics()
 
       CALL dbm_library_print_stats(mpi_comm=mpi_comm, output_unit=output_unit)
