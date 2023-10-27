@@ -7,14 +7,14 @@
 
 MODULE cp_fm_dlaf_api
 
-   USE ISO_C_BINDING,                   ONLY: C_CHAR,&
-                                              C_DOUBLE,&
-                                              C_INT,&
-                                              C_LOC,&
-                                              C_PTR
-   USE cp_fm_basic_linalg,              ONLY: cp_fm_upper_to_full
-   USE cp_fm_types,                     ONLY: cp_fm_type
-   USE kinds,                           ONLY: dp
+   USE ISO_C_BINDING, ONLY: C_CHAR, &
+                            C_DOUBLE, &
+                            C_INT, &
+                            C_LOC, &
+                            C_PTR
+   USE cp_fm_basic_linalg, ONLY: cp_fm_upper_to_full
+   USE cp_fm_types, ONLY: cp_fm_type
+   USE kinds, ONLY: dp
 #include "../base/base_uses.f90"
 
    IMPLICIT NONE
@@ -53,10 +53,9 @@ CONTAINS
 
       INTEGER                                            :: handle
       INTERFACE
-         SUBROUTINE pdpotrf_dlaf(uplo, n, a, ia, ja, desca, info) &
+         SUBROUTINE pdpotrf_dlaf(n, a, ia, ja, desca, info) &
             BIND(C, name='dlaf_pdpotrf_wrapper')
             IMPORT :: C_PTR, C_INT, C_DOUBLE
-            INTEGER(KIND=C_INT), VALUE :: uplo
             INTEGER(KIND=C_INT), VALUE      ::        ia, ja, n
             TYPE(C_PTR), VALUE ::       info
             INTEGER(kind=C_INT), DIMENSION(*)         :: desca
@@ -67,11 +66,10 @@ CONTAINS
       CALL timeset(routineN, handle)
 
 #if defined(__DLAF)
-      IF (uplo == "L") THEN
-         CALL pdpotrf_dlaf(0, N, C_LOC(A(1, 1)), IA, JA, DESCA, C_LOC(INFO))
-      ELSE IF (uplo == "U") THEN
-         CALL pdpotrf_dlaf(1, N, C_LOC(A(1, 1)), IA, JA, DESCA, C_LOC(INFO))
-      END IF
+      CPASSERT(uplo == "U")
+      CPASSERT(ia == 1)
+      CPASSERT(ja == 1)
+      CALL pdpotrf_dlaf(N, C_LOC(A(1, 1)), IA, JA, DESCA, C_LOC(INFO))
 #else
       MARK_USED(uplo)
       MARK_USED(n)
@@ -110,10 +108,9 @@ CONTAINS
 
       INTEGER                                            :: handle
       INTERFACE
-         SUBROUTINE pspotrf_dlaf(uplo, n, a, ia, ja, desca, info) &
+         SUBROUTINE pspotrf_dlaf(n, a, ia, ja, desca, info) &
             BIND(C, name='dlaf_pspotrf_wrapper')
             IMPORT :: C_PTR, C_INT, C_DOUBLE
-            INTEGER(KIND=C_INT), VALUE :: uplo
             INTEGER(KIND=C_INT), VALUE      ::        ia, ja, n
             TYPE(C_PTR), VALUE    ::       info
             INTEGER(kind=C_INT), DIMENSION(*)         :: desca
@@ -124,11 +121,10 @@ CONTAINS
       CALL timeset(routineN, handle)
 
 #if defined(__DLAF)
-      IF (uplo == "L") THEN
-         CALL pspotrf_dlaf(0, n, C_LOC(a(1, 1)), ia, ja, desca, C_LOC(info))
-      ELSE IF (uplo == "U") THEN
-         CALL pspotrf_dlaf(1, n, C_LOC(a(1, 1)), ia, ja, desca, C_LOC(info))
-      END IF
+      CPASSERT(uplo == "U")
+      CPASSERT(ia == 1)
+      CPASSERT(ja == 1)
+      CALL pspotrf_dlaf(n, C_LOC(a(1, 1)), ia, ja, desca, C_LOC(info))
 #else
       MARK_USED(uplo)
       MARK_USED(n)
@@ -251,6 +247,7 @@ CONTAINS
       MARK_USED(info)
       MARK_USED(dlaf_handle)
       MARK_USED(dlaf_name)
+      MARK_USED(message)
       CPABORT("CP2K compiled without DLAF library.")
 #endif
 
