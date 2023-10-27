@@ -17,6 +17,7 @@ void dlaf_init() {
   dlaf_initialize(2, pika_argv, 1, dlaf_argv);
 }
 
+// Eigensolver (double)
 void dlaf_pdsyevd_wrapper(int n, double *a, int ia, int ja, int desca[9],
                           double *w, double *z, int iz, int jz, int descz[9],
                           int *info) {
@@ -24,26 +25,18 @@ void dlaf_pdsyevd_wrapper(int n, double *a, int ia, int ja, int desca[9],
   dlaf_pdsyevd(uplo, n, a, ia, ja, desca, w, z, iz, jz, descz, info);
 }
 
-void dlaf_pdpotrf_wrapper(int uplo, int n, double *a, int ia, int ja,
+// Cholesky decomposition (double)
+// Wrapper without uplo parameter, avoids passing characters
+void dlaf_pdpotrf_wrapper(int n, double *a, int ia, int ja,
                           int desca[9], int *info) {
-  char _uplo = ' ';
-  if (uplo == 0) {
-    _uplo = 'L';
-  } else if (uplo == 1) {
-    _uplo = 'U';
-  }
-  dlaf_pdpotrf(_uplo, n, a, ia, ja, desca, info);
+  dlaf_pdpotrf('U', n, a, ia, ja, desca, info);
 }
 
-void dlaf_pspotrf_wrapper(int uplo, int n, float *a, int ia, int ja,
+// Cholesky decomposition (float)
+// Wrapper without uplo parameter, avoids passing characters
+void dlaf_pspotrf_wrapper(int n, float *a, int ia, int ja,
                           int desca[9], int *info) {
-  char _uplo = ' ';
-  if (uplo == 0) {
-    _uplo = 'L';
-  } else if (uplo == 1) {
-    _uplo = 'U';
-  }
-  dlaf_pspotrf(_uplo, n, a, ia, ja, desca, info);
+  dlaf_pspotrf('U', n, a, ia, ja, desca, info);
 }
 
 #endif // __DLAF
