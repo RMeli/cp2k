@@ -50,7 +50,7 @@ CONTAINS
 ! **************************************************************************************************
 !> \brief Finalize DLA-Future and pika runtime
 !> \author Rocco Meli
-!> \author Mikeal Simberg
+!> \author Mikael Simberg
 !> \author Mathieu Taillefumier
 ! **************************************************************************************************
    SUBROUTINE cp_dlaf_finalize()
