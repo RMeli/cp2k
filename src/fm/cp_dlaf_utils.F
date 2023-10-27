@@ -78,7 +78,7 @@ CONTAINS
 !> \brief Create DLA-Future grid from BLACS context
 !> \param blacs_context ...
 !> \author Rocco Meli
-!> \author Mikeal Simberg
+!> \author Mikael Simberg
 !> \author Mathieu Taillefumier
 ! **************************************************************************************************
    SUBROUTINE cp_dlaf_create_grid(blacs_context)
