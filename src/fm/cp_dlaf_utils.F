@@ -111,7 +111,7 @@ CONTAINS
 !> \brief Free DLA-Future grid corresponding to BLACS context
 !> \param blacs_context ...
 !> \author Rocco Meli
-!> \author Mikeal Simberg
+!> \author Mikael Simberg
 !> \author Mathieu Taillefumier
 ! **************************************************************************************************
    SUBROUTINE cp_dlaf_free_grid(blacs_context)
