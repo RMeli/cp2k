@@ -211,7 +211,7 @@ CONTAINS
 
       CALL keyword_create(keyword, __LOCATION__, name="DLAF_NEIGVEC_MIN", &
                           description="Minimum number of eigenvectors for the use of the eigensolver from "// &
-                          "the DLAF library. The eigensolver from the ScaLAPACK library is used as fallback "// &
+                          "the DLA-Future library. The eigensolver from the ScaLAPACK library is used as fallback "// &
                           "for all smaller cases", &
                           usage="DLAF_NEIGVEC_MIN 512", &
                           default_i_val=3)
