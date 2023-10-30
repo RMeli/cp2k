@@ -35,7 +35,9 @@ MODULE cp_fm_diag
                          set_elpa_print, &
                          set_elpa_qr
    USE cp_fm_cusolver_api, ONLY: cp_fm_diag_cusolver
+#if defined(__DLAF)
    USE cp_fm_dlaf_api, ONLY: cp_fm_diag_dlaf
+#endif
    USE cp_fm_types, ONLY: cp_fm_get_info, &
                           cp_fm_set_element, &
                           cp_fm_to_fm, &
@@ -72,9 +74,11 @@ MODULE cp_fm_diag
    ! Minimum number of eigenvectors for the use of the ELPA eigensolver.
    ! The ScaLAPACK eigensolver is used as fallback for all smaller cases.
    INTEGER, SAVE       :: elpa_neigvec_min = 0
+#if defined(__DLAF)
    ! Minimum number of eigenvectors for the use of the DLAF eigensolver.
    ! The ScaLAPACK eigensolver is used as fallback for all smaller cases.
    INTEGER, SAVE       :: dlaf_neigvec_min = 0
+#endif
    ! Threshold value for the orthonormality check of the eigenvectors obtained
    ! after a diagonalization. A negative value disables the check.
    REAL(KIND=dp), SAVE :: eps_check_diag = -1.0_dp
@@ -168,7 +172,9 @@ CONTAINS
       END IF
 
       elpa_neigvec_min = elpa_neigvec_min_input
+#if defined(__DLAF)
       dlaf_neigvec_min = dlaf_neigvec_min_input
+#endif
       eps_check_diag = eps_check_diag_input
 
    END SUBROUTINE diag_init
@@ -228,6 +234,7 @@ CONTAINS
             CALL cp_fm_diag_cusolver(matrix, eigenvectors, eigenvalues)
          END IF
 
+#if defined(__DLAF)
       ELSE IF (diag_type == FM_DIAG_TYPE_DLAF) THEN
          IF (SIZE(eigenvalues) < dlaf_neigvec_min) THEN
             ! Use ScaLAPACK for small matrices
@@ -235,6 +242,8 @@ CONTAINS
          ELSE
             CALL cp_fm_diag_dlaf(matrix, eigenvectors, eigenvalues)
          END IF
+#endif
+
       ELSE
          CPABORT("ERROR in "//routineN//": Invalid diagonalization type requested")
       END IF
