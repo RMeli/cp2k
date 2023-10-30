@@ -27,15 +27,15 @@ void dlaf_pdsyevd_wrapper(int n, double *a, int ia, int ja, int desca[9],
 
 // Cholesky decomposition (double)
 // Wrapper without uplo parameter, avoids passing characters
-void dlaf_pdpotrf_wrapper(int n, double *a, int ia, int ja,
-                          int desca[9], int *info) {
+void dlaf_pdpotrf_wrapper(int n, double *a, int ia, int ja, int desca[9],
+                          int *info) {
   dlaf_pdpotrf('U', n, a, ia, ja, desca, info);
 }
 
 // Cholesky decomposition (float)
 // Wrapper without uplo parameter, avoids passing characters
-void dlaf_pspotrf_wrapper(int n, float *a, int ia, int ja,
-                          int desca[9], int *info) {
+void dlaf_pspotrf_wrapper(int n, float *a, int ia, int ja, int desca[9],
+                          int *info) {
   dlaf_pspotrf('U', n, a, ia, ja, desca, info);
 }
 
