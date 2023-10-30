@@ -62,8 +62,6 @@ MODULE global_types
 !> \note
 !>      This is not but really should be passed as pointer and use reference
 !>      counting. Use it accordingly wherever possible.
-!> \par History
-!>      - Add support for DLA-Future (05.09.2023, RMeli)
 ! **************************************************************************************************
    TYPE global_environment_type
       INTEGER :: ref_count = 0

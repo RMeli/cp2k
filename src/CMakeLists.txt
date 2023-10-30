@@ -962,11 +962,9 @@ list(
   fm/cp_cfm_diag.F
   fm/cp_cfm_basic_linalg.F
   fm/cp_cfm_types.F
-  fm/cp_dlaf_utils.F
   fm/cp_fm_basic_linalg.F
   fm/cp_fm_cholesky.F
   fm/cp_fm_cusolver_api.F
-  fm/cp_fm_dlaf_api.F
   fm/cp_fm_diag.F
   fm/cp_fm_diag_utils.F
   fm/cp_fm_elpa.F
@@ -975,7 +973,12 @@ list(
   fm/cp_fm_struct.F
   fm/cp_linked_list_fm.F)
 
-list(APPEND CP2K_SRCS_C fm/cp_fm_cusolver.c fm/cp_dlaf_utils.c)
+list(APPEND CP2K_SRCS_C fm/cp_fm_cusolver.c)
+
+if(CP2K_USE_DLAF)
+  list(APPEND CP2K_SRCS_F fm/cp_dlaf_utils.F fm/cp_fm_dlaf_api.F)
+  list(APPEND CP2K_SRCS_C fm/cp_dlaf_utils.c)
+endif()
 
 list(APPEND CP2K_SRCS_F hfxbase/hfx_compression_core_methods.F
      hfxbase/hfx_contract_block.F hfxbase/hfx_contraction_methods.F)

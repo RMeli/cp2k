@@ -26,8 +26,10 @@ MODULE f77_interface
    USE cell_methods,                    ONLY: init_cell
    USE cell_types,                      ONLY: cell_type
    USE cp2k_info,                       ONLY: get_runtime_info
+#if defined(__DLAF)
    USE cp_dlaf_utils,                   ONLY: cp_dlaf_finalize,&
                                               cp_dlaf_initialize
+#endif
    USE cp_error_handling,               ONLY: cp_error_handling_setup
    USE cp_files,                        ONLY: init_preconnection_list,&
                                               open_file
