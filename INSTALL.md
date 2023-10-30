@@ -245,7 +245,9 @@ tools for the solution of dense linear systems and eigenvalue problems.
 
 ### 2m. DLA-Future (optional, experimental, improved performance for diagonalization on Nvidia and AMD GPUs)
 
-[DLA-Future](https://github.com/eth-cscs/DLA-Future) is a high-performance, distributed-memory, GPU-accelerated library that provides tools for the solution of eigenvalue problems, based on the [pika](https://pikacpp.org/) runtime.
+[DLA-Future](https://github.com/eth-cscs/DLA-Future) is a high-performance, distributed-memory, 
+GPU-accelerated library that provides tools for the solution of eigenvalue problems, 
+based on the [pika](https://pikacpp.org/) runtime.
 
 - DLA-Future replaces the ScaLAPACK `SYEVD` to improve performance of the diagonalization
 - DLA-Future is available at <https://github.com/eth-cscs/DLA-Future>
