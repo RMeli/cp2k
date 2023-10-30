@@ -150,7 +150,11 @@ CONTAINS
       ELSE IF (diag_lib == "cuSOLVER") THEN
          diag_type = FM_DIAG_TYPE_CUSOLVER
       ELSE IF (diag_lib == "DLAF") THEN
+#if defined (__DLAF)
          diag_type = FM_DIAG_TYPE_DLAF
+#else
+         CPABORT("ERROR in diag_init: CP2K was not compiled with DLA-Future support")
+#endif
       ELSE
          CPABORT("ERROR in diag_init: Initialization of unknown diagonalization library requested")
       END IF
