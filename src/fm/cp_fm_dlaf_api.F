@@ -93,7 +93,7 @@ CONTAINS
 !> \param desca ScaLAPACK matrix descriptor
 !> \param info 0 if factorization completed normally
 !> \author Rocco Meli
-!> \author Mikeal Simberg
+!> \author Mikael Simberg
 !> \author Mathieu Taillefumier
 ! **************************************************************************************************
    SUBROUTINE cp_pspotrf_dlaf(uplo, n, a, ia, ja, desca, info)
