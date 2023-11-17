@@ -111,8 +111,10 @@ option(CP2K_USE_STATIC_BLAS "Link against static version of BLAS/LAPACK" OFF)
 option(CP2K_USE_SPLA
        "Use SPLA offloading gemm feature to the GPU if it is beneficial. " OFF)
 option(CP2K_USE_METIS "enable metis library support" OFF)
-option(CP2K_USE_DLAF "Use DLA-Future for Cholesky decompositions and the solution of eigenvalue problems"
-       OFF)
+option(
+  CP2K_USE_DLAF
+  "Use DLA-Future for Cholesky decompositions and the solution of eigenvalue problems"
+  OFF)
 option(CP2K_USE_LIBXSMM "Use libxsmm for small gemms (supports x86 platforms)"
        OFF)
 option(BUILD_SHARED_LIBS "Build cp2k shared library" ON)
@@ -619,6 +621,7 @@ if(CP2K_USE_FFTW3)
     set(CP2K_USE_FFTW3_ ON)
   else()
     message("-- Using the MKL implementation of FFTW3.")
+    set(CP2K_USE_FFTW3_MKL_ ON)
   endif()
 endif()
 
