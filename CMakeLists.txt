@@ -920,12 +920,7 @@ if(CP2K_USE_ELPA)
 endif()
 
 if(CP2K_USE_DLAF)
-  # get_target_property(CP2K_DLAF_FORTRAN_INCLUDE_DIRS DLAF::DLAF_Fortran
-  #                     INTERFACE_INCLUDE_DIRECTORIES)
-  # get_target_property(CP2K_DLAF_FORTRAN_LINK_LIBRARIES DLAF::DLAF_Fortran
-  #                     INTERFACE_LINK_LIBRARIES)
-  # message(" - DLAF\n" "   - include directories : ${CP2K_DLAF_FORTRAN_INCLUDE_DIRS}\n"
-  #                     "   - libraries           : ${CP2K_DLAF_FORTRAN_LINK_LIBRARIES}\n\n")
+  message(" - DLA-Future (Fortran)  : ON\n")
 endif()
 
 if(CP2K_USE_SUPERLU)
