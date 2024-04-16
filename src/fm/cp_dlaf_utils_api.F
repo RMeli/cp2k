@@ -6,8 +6,10 @@
 !--------------------------------------------------------------------------------------------------!
 
 MODULE cp_dlaf_utils_api
-   USE dlaf_fortran, ONLY: dlaf_initialize, dlaf_finalize, dlaf_create_grid, dlaf_free_grid
-
+   USE dlaf_fortran,                    ONLY: dlaf_create_grid,&
+                                              dlaf_finalize,&
+                                              dlaf_free_grid,&
+                                              dlaf_initialize
 #include "../base/base_uses.f90"
 
    IMPLICIT NONE
@@ -29,7 +31,8 @@ CONTAINS
 ! **************************************************************************************************
    SUBROUTINE cp_dlaf_initialize()
       CHARACTER(len=*), PARAMETER :: routineN = 'cp_dlaf_initialize'
-      INTEGER                     :: handle
+
+      INTEGER                                            :: handle
 
       CALL timeset(routineN, handle)
 
@@ -48,6 +51,7 @@ CONTAINS
 ! **************************************************************************************************
    SUBROUTINE cp_dlaf_finalize()
       CHARACTER(len=*), PARAMETER                        :: routineN = 'cp_dlaf_finalize'
+
       INTEGER                                            :: handle
 
       CALL timeset(routineN, handle)
@@ -70,6 +74,7 @@ CONTAINS
       INTEGER, INTENT(IN)                                :: blacs_context
 
       CHARACTER(len=*), PARAMETER :: routineN = 'cp_dlaf_create_grid'
+
       INTEGER                                            :: handle
 
       CALL timeset(routineN, handle)
@@ -95,6 +100,7 @@ CONTAINS
       INTEGER, INTENT(IN)                                :: blacs_context
 
       CHARACTER(len=*), PARAMETER                        :: routineN = 'cp_dlaf_free_grid'
+
       INTEGER                                            :: handle
 
       CALL timeset(routineN, handle)
