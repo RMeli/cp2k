@@ -7,15 +7,10 @@
 
 MODULE cp_fm_dlaf_api
    USE dlaf_fortran, ONLY: dlaf_pspotrf, dlaf_pdpotrf, dlaf_pdsyevd  
-   USE ISO_C_BINDING,                   ONLY: C_CHAR,&
-                                              C_DOUBLE,&
-                                              C_INT,&
-                                              C_LOC,&
-                                              C_PTR,&
-                                              C_SIGNED_CHAR
    USE cp_fm_basic_linalg,              ONLY: cp_fm_upper_to_full
    USE cp_fm_types,                     ONLY: cp_fm_type
    USE kinds,                           ONLY: dp
+
 #include "../base/base_uses.f90"
 
    IMPLICIT NONE

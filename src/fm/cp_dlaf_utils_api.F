@@ -7,11 +7,7 @@
 
 MODULE cp_dlaf_utils_api
    USE dlaf_fortran, ONLY: dlaf_initialize, dlaf_finalize, dlaf_create_grid, dlaf_free_grid
-   USE ISO_C_BINDING,                   ONLY: C_CHAR,&
-                                              C_INT,&
-                                              C_LOC,&
-                                              C_NULL_CHAR,&
-                                              C_PTR
+
 #include "../base/base_uses.f90"
 
    IMPLICIT NONE
