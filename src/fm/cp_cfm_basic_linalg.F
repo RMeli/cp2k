@@ -54,7 +54,8 @@ MODULE cp_cfm_basic_linalg
              cp_cfm_rot_rows, &
              cp_cfm_rot_cols, &
              cp_cfm_cholesky_invert, &
-             cp_cfm_det ! determinant of a complex matrix with correct sign
+             cp_cfm_det, & ! determinant of a complex matrix with correct sign
+             cp_cfm_upper_to_full
 
    REAL(kind=dp), EXTERNAL :: zlange, pzlange
 
@@ -1456,5 +1457,97 @@ CONTAINS
 
       CALL timestop(handle)
    END SUBROUTINE cp_cfm_rot_cols
+
+
+! **************************************************************************************************
+!> \brief given an upper triangular matrix computes the corresponding full matrix
+!> \param matrix the upper triangular matrix as input, the full matrix as output
+!> \param work a matrix of the same size as matrix
+!> \author Matthias Krack
+!> \author Rocco Meli
+!> \note
+!>       the lower triangular part is irrelevant
+! **************************************************************************************************
+   SUBROUTINE cp_cfm_upper_to_full(matrix, work)
+
+      TYPE(cp_cfm_type), INTENT(IN)          :: matrix, work
+
+      CHARACTER(len=*), PARAMETER :: routineN = 'cp_cfm_upper_to_full'
+
+      INTEGER                                  :: handle, icol_global, irow_global, &
+                                                  mypcol, myprow, ncol_global, &
+                                                  npcol, nprow, nrow_global
+      COMPLEX(KIND=dp), DIMENSION(:, :), POINTER   :: a
+      TYPE(cp_blacs_env_type), POINTER         :: context
+
+#if defined(__parallel)
+      INTEGER                                  :: icol_local, irow_local, &
+                                                  ncol_block, ncol_local, &
+                                                  nrow_block, nrow_local
+      INTEGER, DIMENSION(9)                    :: desca, descc
+      COMPLEX(KIND=dp), DIMENSION(:, :), POINTER   :: c
+#endif
+
+      nrow_global = matrix%matrix_struct%nrow_global
+      ncol_global = matrix%matrix_struct%ncol_global
+      CPASSERT(nrow_global == ncol_global)
+      nrow_global = work%matrix_struct%nrow_global
+      ncol_global = work%matrix_struct%ncol_global
+      CPASSERT(nrow_global == ncol_global)
+
+      CALL timeset(routineN, handle)
+
+      context => matrix%matrix_struct%context
+      myprow = context%mepos(1)
+      mypcol = context%mepos(2)
+      nprow = context%num_pe(1)
+      npcol = context%num_pe(2)
+
+#if defined(__parallel)
+
+      nrow_block = matrix%matrix_struct%nrow_block
+      ncol_block = matrix%matrix_struct%ncol_block
+
+      nrow_local = matrix%matrix_struct%nrow_locals(myprow)
+      ncol_local = matrix%matrix_struct%ncol_locals(mypcol)
+
+      a => work%local_data
+      desca(:) = work%matrix_struct%descriptor(:)
+      c => matrix%local_data
+      descc(:) = matrix%matrix_struct%descriptor(:)
+
+      DO icol_local = 1, ncol_local
+         icol_global = matrix%matrix_struct%col_indices(icol_local)
+         DO irow_local = 1, nrow_local
+            irow_global = matrix%matrix_struct%row_indices(irow_local)
+            IF (irow_global > icol_global) THEN
+               c(irow_local, icol_local) = 0.0_dp
+            ELSE IF (irow_global == icol_global) THEN
+               c(irow_local, icol_local) = 0.5_dp*c(irow_local, icol_local)
+            END IF
+         END DO
+      END DO
+
+      DO icol_local = 1, ncol_local
+      DO irow_local = 1, nrow_local
+         a(irow_local, icol_local) = c(irow_local, icol_local)
+      END DO
+      END DO
+
+      CALL pztranc(nrow_global, ncol_global, 1.0_dp, a(1, 1), 1, 1, desca, 1.0_dp, c(1, 1), 1, 1, descc)
+
+#else
+
+      a => matrix%local_data
+      DO irow_global = 1, nrow_global
+         DO icol_global = irow_global + 1, ncol_global
+            a(icol_global, irow_global) = a(irow_global, icol_global)
+         END DO
+      END DO
+
+#endif
+      CALL timestop(handle)
+
+   END SUBROUTINE cp_cfm_upper_to_full
 
 END MODULE cp_cfm_basic_linalg

@@ -22,6 +22,10 @@ MODULE cp_cfm_diag
                            cp_cfm_set_element, &
                            cp_cfm_to_cfm, &
                            cp_cfm_type
+#if defined(__DLAF)
+   USE cp_cfm_dlaf_api, ONLY: cp_cfm_diag_gen_dlaf, &
+                               cp_cfm_diag_dlaf
+#endif
    USE kinds, ONLY: dp
 #if defined (__HAS_IEEE_EXCEPTIONS)
    USE ieee_exceptions, ONLY: ieee_get_halting_mode, &
@@ -38,7 +42,48 @@ MODULE cp_cfm_diag
 
    PUBLIC :: cp_cfm_heevd, cp_cfm_geeig, cp_cfm_geeig_canon
 
+#if defined(__DLAF)
+   ! TODO: Do this properly...
+   INTEGER, PARAMETER, PUBLIC  :: FM_DIAG_TYPE_DLAF = 104
+   INTEGER, PARAMETER, PUBLIC  :: dlaf_neigvec_min = 3
+   INTEGER, SAVE       :: diag_type = FM_DIAG_TYPE_DLAF
+#endif
+
 CONTAINS
+
+! **************************************************************************************************
+!> \brief Perform a diagonalisation of a complex matrix
+!> \param matrix ...
+!> \param eigenvectors ...
+!> \param eigenvalues ...
+!> \author Joost VandeVondele
+!> \author Rocco Meli
+! **************************************************************************************************
+   SUBROUTINE cp_cfm_heevd(matrix, eigenvectors, eigenvalues)
+
+      TYPE(cp_cfm_type), INTENT(IN)            :: matrix, eigenvectors
+      REAL(KIND=dp), DIMENSION(:), INTENT(OUT) :: eigenvalues
+
+      CHARACTER(len=*), PARAMETER :: routineN = 'cp_cfm_heevd'
+
+      INTEGER                                  :: handle
+
+      CALL timeset(routineN, handle)
+
+#if defined(__DLAF)
+      IF (diag_type == FM_DIAG_TYPE_DLAF .AND. matrix%matrix_struct%nrow_global >= dlaf_neigvec_min) THEN
+         CALL cp_cfm_diag_dlaf(matrix, eigenvectors, eigenvalues)
+      ELSE
+#endif
+      CALL cp_cfm_heevd_base(matrix, eigenvectors, eigenvalues)
+#if defined(__DLAF)
+     END IF
+#endif
+   
+      
+      CALL timestop(handle)
+
+   END SUBROUTINE cp_cfm_heevd
 
 ! **************************************************************************************************
 !> \brief Perform a diagonalisation of a complex matrix
@@ -49,12 +94,12 @@ CONTAINS
 !>      - (De)Allocation checks updated (15.02.2011,MK)
 !> \author Joost VandeVondele
 ! **************************************************************************************************
-   SUBROUTINE cp_cfm_heevd(matrix, eigenvectors, eigenvalues)
+   SUBROUTINE cp_cfm_heevd_base(matrix, eigenvectors, eigenvalues)
 
       TYPE(cp_cfm_type), INTENT(IN)            :: matrix, eigenvectors
       REAL(KIND=dp), DIMENSION(:), INTENT(OUT) :: eigenvalues
 
-      CHARACTER(len=*), PARAMETER :: routineN = 'cp_cfm_heevd'
+      CHARACTER(len=*), PARAMETER :: routineN = 'cp_cfm_heevd_base'
 
       COMPLEX(KIND=dp), DIMENSION(:), POINTER  :: work
       COMPLEX(KIND=dp), DIMENSION(:, :), &
@@ -131,7 +176,7 @@ CONTAINS
 
       CALL timestop(handle)
 
-   END SUBROUTINE cp_cfm_heevd
+   END SUBROUTINE cp_cfm_heevd_base
 
 ! **************************************************************************************************
 !> \brief General Eigenvalue Problem  AX = BXE
@@ -155,6 +200,14 @@ CONTAINS
 
       CALL timeset(routineN, handle)
 
+#if defined(__DLAF)
+      IF (diag_type == FM_DIAG_TYPE_DLAF .AND. amatrix%matrix_struct%nrow_global >= dlaf_neigvec_min) THEN
+         ! Use DLA-Future generalized eigenvalue solver for large matrices
+         CALL cp_cfm_diag_gen_dlaf(amatrix, bmatrix, eigenvectors, eigenvalues)
+      ELSE
+      ! TODO: Deal with unused workspace when using DLA-Future
+      MARK_USED(work)
+#endif
       CALL cp_cfm_get_info(amatrix, nrow_global=nao)
       ALLOCATE (evals(nao))
       ! Cholesky decompose S=U(T)U
@@ -171,6 +224,9 @@ CONTAINS
       nmo = SIZE(eigenvalues)
       CALL cp_cfm_to_cfm(work, eigenvectors, nmo)
       eigenvalues(1:nmo) = evals(1:nmo)
+#if defined(__DLAF)
+     END IF
+#endif
 
       DEALLOCATE (evals)
 
