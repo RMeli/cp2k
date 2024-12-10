@@ -199,17 +199,19 @@ CONTAINS
       REAL(KIND=dp), ALLOCATABLE, DIMENSION(:)           :: evals
 
       CALL timeset(routineN, handle)
+      
+      CALL cp_cfm_get_info(amatrix, nrow_global=nao)
+      ALLOCATE (evals(nao))
+      nmo = SIZE(eigenvalues)
 
 #if defined(__DLAF)
       IF (diag_type == FM_DIAG_TYPE_DLAF .AND. amatrix%matrix_struct%nrow_global >= dlaf_neigvec_min) THEN
          ! Use DLA-Future generalized eigenvalue solver for large matrices
-         CALL cp_cfm_diag_gen_dlaf(amatrix, bmatrix, eigenvectors, eigenvalues)
+         CALL cp_cfm_diag_gen_dlaf(amatrix, bmatrix, work, evals)
       ELSE
       ! TODO: Deal with unused workspace when using DLA-Future
       MARK_USED(work)
 #endif
-      CALL cp_cfm_get_info(amatrix, nrow_global=nao)
-      ALLOCATE (evals(nao))
       ! Cholesky decompose S=U(T)U
       CALL cp_cfm_cholesky_decompose(bmatrix)
       ! Invert to get U^(-1)
@@ -221,12 +223,12 @@ CONTAINS
       CALL cp_cfm_heevd(matrix=amatrix, eigenvectors=work, eigenvalues=evals)
       ! Restore vectors C = U^(-1) * C*
       CALL cp_cfm_triangular_multiply(bmatrix, work)
-      nmo = SIZE(eigenvalues)
-      CALL cp_cfm_to_cfm(work, eigenvectors, nmo)
-      eigenvalues(1:nmo) = evals(1:nmo)
 #if defined(__DLAF)
      END IF
 #endif
+
+      CALL cp_cfm_to_cfm(work, eigenvectors, nmo)
+      eigenvalues(1:nmo) = evals(1:nmo)
 
       DEALLOCATE (evals)
 
