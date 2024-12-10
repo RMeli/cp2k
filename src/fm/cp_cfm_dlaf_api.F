@@ -79,7 +79,7 @@ CONTAINS
       TYPE(cp_cfm_type), INTENT(IN)                      :: matrix, eigenvectors
       REAL(KIND=dp), DIMENSION(:), INTENT(OUT)           :: eigenvalues
 
-      CHARACTER(LEN=*), PARAMETER                        :: routineN = 'cp_cfm_giag_dlaf'
+      CHARACTER(LEN=*), PARAMETER                        :: routineN = 'cp_cfm_diag_dlaf'
 
       INTEGER                                            :: handle, n, nmo
       REAL(KIND=dp), ALLOCATABLE, DIMENSION(:), TARGET   :: eig
