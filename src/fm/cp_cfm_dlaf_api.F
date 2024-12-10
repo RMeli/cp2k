@@ -168,7 +168,8 @@ CONTAINS
 #if defined(__DLAF)
       ! DLAF needs the lower triangular part
       ! Use eigenvectors matrix as workspace
-      CALL cp_cfm_upper_to_full(matrix, eigenvectors)
+      !CALL cp_cfm_upper_to_full(matrix, eigenvectors)
+      CALL cp_cfm_upper_to_full(matrix)
 
       n = matrix%matrix_struct%nrow_global
 
@@ -181,6 +182,11 @@ CONTAINS
       info = -1
       CALL timeset(dlaf_name, dlaf_handle)
 
+      WRITE(*,*) "Calling DLAF_PZHEEVD"
+      WRITE(*,*) "     MB_A: ", desca(5)
+      WRITE(*,*) "     NB_A: ", desca(6)
+      WRITE(*,*) "     MB_Z: ", descz(5)
+      WRITE(*,*) "     NB_Z: ", descz(6)
       CALL dlaf_pzheevd(uplo, n, a, 1, 1, desca, eigenvalues, z, 1, 1, descz, info)
 
       CALL timestop(dlaf_handle)
@@ -237,8 +243,10 @@ CONTAINS
 #if defined(__DLAF)
       ! DLAF needs the lower triangular part
       ! Use eigenvectors matrix as workspace
-      CALL cp_cfm_upper_to_full(amatrix, eigenvectors)
-      CALL cp_cfm_upper_to_full(bmatrix, eigenvectors)
+      ! CALL cp_cfm_upper_to_full(amatrix, eigenvectors)
+      ! CALL cp_cfm_upper_to_full(bmatrix, eigenvectors)
+      CALL cp_cfm_upper_to_full(amatrix)
+      CALL cp_cfm_upper_to_full(bmatrix)
 
       n = amatrix%matrix_struct%nrow_global
 
@@ -253,6 +261,13 @@ CONTAINS
       info = -1
       CALL timeset(dlaf_name, dlaf_handle)
 
+      WRITE(*,*) "Calling DLAF_PZHEGVD"
+      WRITE(*,*) "     MB_A: ", desca(5)
+      WRITE(*,*) "     NB_A: ", desca(6)
+      WRITE(*,*) "     MB_B: ", descb(5)
+      WRITE(*,*) "     NB_B: ", descb(6)
+      WRITE(*,*) "     MB_Z: ", descz(5)
+      WRITE(*,*) "     NB_Z: ", descz(6)
       CALL dlaf_pzhegvd(uplo, n, a, 1, 1, desca, b, 1, 1, descb, eigenvalues, z, 1, 1, descz, info)
 
       CALL timestop(dlaf_handle)
