@@ -24,7 +24,7 @@ MODULE cp_cfm_diag
                            cp_cfm_type
 #if defined(__DLAF)
    USE cp_cfm_dlaf_api, ONLY: cp_cfm_diag_gen_dlaf, &
-                               cp_cfm_diag_dlaf
+                              cp_cfm_diag_dlaf
 #endif
    USE kinds, ONLY: dp
 #if defined (__HAS_IEEE_EXCEPTIONS)
@@ -61,12 +61,12 @@ CONTAINS
 ! **************************************************************************************************
    SUBROUTINE cp_cfm_heevd(matrix, eigenvectors, eigenvalues)
 
-      TYPE(cp_cfm_type), INTENT(IN)            :: matrix, eigenvectors
-      REAL(KIND=dp), DIMENSION(:), INTENT(OUT) :: eigenvalues
+      TYPE(cp_cfm_type), INTENT(IN)                      :: matrix, eigenvectors
+      REAL(KIND=dp), DIMENSION(:), INTENT(OUT)           :: eigenvalues
 
-      CHARACTER(len=*), PARAMETER :: routineN = 'cp_cfm_heevd'
+      CHARACTER(len=*), PARAMETER                        :: routineN = 'cp_cfm_heevd'
 
-      INTEGER                                  :: handle
+      INTEGER                                            :: handle
 
       CALL timeset(routineN, handle)
 
@@ -75,12 +75,11 @@ CONTAINS
          CALL cp_cfm_diag_dlaf(matrix, eigenvectors, eigenvalues)
       ELSE
 #endif
-      CALL cp_cfm_heevd_base(matrix, eigenvectors, eigenvalues)
+         CALL cp_cfm_heevd_base(matrix, eigenvectors, eigenvalues)
 #if defined(__DLAF)
-     END IF
+      END IF
 #endif
-   
-      
+
       CALL timestop(handle)
 
    END SUBROUTINE cp_cfm_heevd
@@ -199,7 +198,7 @@ CONTAINS
       REAL(KIND=dp), ALLOCATABLE, DIMENSION(:)           :: evals
 
       CALL timeset(routineN, handle)
-      
+
       CALL cp_cfm_get_info(amatrix, nrow_global=nao)
       ALLOCATE (evals(nao))
       nmo = SIZE(eigenvalues)
@@ -209,22 +208,22 @@ CONTAINS
          ! Use DLA-Future generalized eigenvalue solver for large matrices
          CALL cp_cfm_diag_gen_dlaf(amatrix, bmatrix, work, evals)
       ELSE
-      ! TODO: Deal with unused workspace when using DLA-Future
-      MARK_USED(work)
+         ! TODO: Deal with unused workspace when using DLA-Future
+         MARK_USED(work)
 #endif
-      ! Cholesky decompose S=U(T)U
-      CALL cp_cfm_cholesky_decompose(bmatrix)
-      ! Invert to get U^(-1)
-      CALL cp_cfm_triangular_invert(bmatrix)
-      ! Reduce to get U^(-T) * H * U^(-1)
-      CALL cp_cfm_triangular_multiply(bmatrix, amatrix, side="R")
-      CALL cp_cfm_triangular_multiply(bmatrix, amatrix, transa_tr="C")
-      ! Diagonalize
-      CALL cp_cfm_heevd(matrix=amatrix, eigenvectors=work, eigenvalues=evals)
-      ! Restore vectors C = U^(-1) * C*
-      CALL cp_cfm_triangular_multiply(bmatrix, work)
+         ! Cholesky decompose S=U(T)U
+         CALL cp_cfm_cholesky_decompose(bmatrix)
+         ! Invert to get U^(-1)
+         CALL cp_cfm_triangular_invert(bmatrix)
+         ! Reduce to get U^(-T) * H * U^(-1)
+         CALL cp_cfm_triangular_multiply(bmatrix, amatrix, side="R")
+         CALL cp_cfm_triangular_multiply(bmatrix, amatrix, transa_tr="C")
+         ! Diagonalize
+         CALL cp_cfm_heevd(matrix=amatrix, eigenvectors=work, eigenvalues=evals)
+         ! Restore vectors C = U^(-1) * C*
+         CALL cp_cfm_triangular_multiply(bmatrix, work)
 #if defined(__DLAF)
-     END IF
+      END IF
 #endif
 
       CALL cp_cfm_to_cfm(work, eigenvectors, nmo)

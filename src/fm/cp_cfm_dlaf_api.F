@@ -7,14 +7,14 @@
 
 MODULE cp_cfm_dlaf_api
 
-   USE cp_cfm_basic_linalg,             ONLY: cp_cfm_upper_to_full
-   USE cp_cfm_types,                    ONLY: cp_cfm_type
+   USE cp_cfm_basic_linalg, ONLY: cp_cfm_upper_to_full
+   USE cp_cfm_types, ONLY: cp_cfm_type
 #if defined(__DLAF)
-   USE dlaf_fortran,                    ONLY: dlaf_pzheevd,&
-                                              dlaf_pzhegvd,&
-                                              dlaf_pzpotrf
+   USE dlaf_fortran, ONLY: dlaf_pzheevd, &
+                           dlaf_pzhegvd, &
+                           dlaf_pzpotrf
 #endif
-   USE kinds,                           ONLY: dp
+   USE kinds, ONLY: dp
 #include "../base/base_uses.f90"
 
    IMPLICIT NONE
@@ -117,7 +117,7 @@ CONTAINS
       TYPE(cp_cfm_type), INTENT(IN)                      :: amatrix, bmatrix, eigenvectors
       REAL(KIND=dp), DIMENSION(:), INTENT(OUT)           :: eigenvalues
 
-      CHARACTER(LEN=*), PARAMETER                        :: routineN = 'cp_cfm_diag_gen_dlaf'
+      CHARACTER(LEN=*), PARAMETER :: routineN = 'cp_cfm_diag_gen_dlaf'
 
       INTEGER                                            :: handle, n, nmo
       REAL(KIND=dp), ALLOCATABLE, DIMENSION(:), TARGET   :: eig
@@ -153,8 +153,7 @@ CONTAINS
       TYPE(cp_cfm_type), INTENT(IN)                      :: matrix, eigenvectors
       REAL(kind=dp), DIMENSION(:), INTENT(OUT), TARGET   :: eigenvalues
 
-      CHARACTER(len=*), PARAMETER :: dlaf_name = 'pzheevd_dlaf', &
-         routineN = 'cp_cfm_diag_dlaf_base'
+      CHARACTER(len=*), PARAMETER :: dlaf_name = 'pzheevd_dlaf', routineN = 'cp_cfm_diag_dlaf_base'
       CHARACTER, PARAMETER                               :: uplo = 'L'
 
       CHARACTER(LEN=100)                                 :: message
@@ -224,7 +223,7 @@ CONTAINS
       REAL(kind=dp), DIMENSION(:), INTENT(OUT), TARGET   :: eigenvalues
 
       CHARACTER(len=*), PARAMETER :: dlaf_name = 'pdhegvd_dlaf', &
-         routineN = 'cp_cfm_gen_diag_dlaf_base'
+         routineN = 'cp_cfm_diag_gen_dlaf_base'
       CHARACTER, PARAMETER                               :: uplo = 'L'
 
       CHARACTER(LEN=100)                                 :: message

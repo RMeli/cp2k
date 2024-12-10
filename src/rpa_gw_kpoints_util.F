@@ -18,9 +18,7 @@ MODULE rpa_gw_kpoints_util
    USE cp_cfm_basic_linalg,             ONLY: cp_cfm_cholesky_decompose,&
                                               cp_cfm_cholesky_invert,&
                                               cp_cfm_column_scale,&
-                                              cp_cfm_scale_and_add,&
                                               cp_cfm_scale_and_add_fm,&
-                                              cp_cfm_transpose,&
                                               cp_cfm_upper_to_full
    USE cp_cfm_diag,                     ONLY: cp_cfm_geeig,&
                                               cp_cfm_geeig_canon,&
