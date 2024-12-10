@@ -182,11 +182,6 @@ CONTAINS
       info = -1
       CALL timeset(dlaf_name, dlaf_handle)
 
-      WRITE(*,*) "Calling DLAF_PZHEEVD"
-      WRITE(*,*) "     MB_A: ", desca(5)
-      WRITE(*,*) "     NB_A: ", desca(6)
-      WRITE(*,*) "     MB_Z: ", descz(5)
-      WRITE(*,*) "     NB_Z: ", descz(6)
       CALL dlaf_pzheevd(uplo, n, a, 1, 1, desca, eigenvalues, z, 1, 1, descz, info)
 
       CALL timestop(dlaf_handle)
@@ -261,13 +256,6 @@ CONTAINS
       info = -1
       CALL timeset(dlaf_name, dlaf_handle)
 
-      WRITE(*,*) "Calling DLAF_PZHEGVD"
-      WRITE(*,*) "     MB_A: ", desca(5)
-      WRITE(*,*) "     NB_A: ", desca(6)
-      WRITE(*,*) "     MB_B: ", descb(5)
-      WRITE(*,*) "     NB_B: ", descb(6)
-      WRITE(*,*) "     MB_Z: ", descz(5)
-      WRITE(*,*) "     NB_Z: ", descz(6)
       CALL dlaf_pzhegvd(uplo, n, a, 1, 1, desca, b, 1, 1, descb, eigenvalues, z, 1, 1, descz, info)
 
       CALL timestop(dlaf_handle)
