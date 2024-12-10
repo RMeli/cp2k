@@ -222,7 +222,7 @@ CONTAINS
       TYPE(cp_cfm_type), INTENT(IN)                      :: amatrix, bmatrix, eigenvectors
       REAL(kind=dp), DIMENSION(:), INTENT(OUT), TARGET   :: eigenvalues
 
-      CHARACTER(len=*), PARAMETER :: dlaf_name = 'pdhegvd_dlaf', &
+      CHARACTER(len=*), PARAMETER :: dlaf_name = 'pzhegvd_dlaf', &
          routineN = 'cp_cfm_diag_gen_dlaf_base'
       CHARACTER, PARAMETER                               :: uplo = 'L'
 
