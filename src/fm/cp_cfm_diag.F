@@ -25,6 +25,7 @@ MODULE cp_cfm_diag
 #if defined(__DLAF)
    USE cp_cfm_dlaf_api, ONLY: cp_cfm_diag_gen_dlaf, &
                               cp_cfm_diag_dlaf
+   USE cp_fm_diag, ONLY: diag_type, dlaf_neigvec_min, FM_DIAG_TYPE_DLAF
 #endif
    USE kinds, ONLY: dp
 #if defined (__HAS_IEEE_EXCEPTIONS)
@@ -41,13 +42,6 @@ MODULE cp_cfm_diag
    CHARACTER(len=*), PARAMETER, PRIVATE :: moduleN = 'cp_cfm_diag'
 
    PUBLIC :: cp_cfm_heevd, cp_cfm_geeig, cp_cfm_geeig_canon
-
-#if defined(__DLAF)
-   ! TODO: Do this properly...
-   INTEGER, PARAMETER, PUBLIC  :: FM_DIAG_TYPE_DLAF = 104
-   INTEGER, PARAMETER, PUBLIC  :: dlaf_neigvec_min = 3
-   INTEGER, SAVE       :: diag_type = FM_DIAG_TYPE_DLAF
-#endif
 
 CONTAINS
 
