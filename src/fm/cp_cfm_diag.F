@@ -50,8 +50,9 @@ CONTAINS
 !> \param matrix ...
 !> \param eigenvectors ...
 !> \param eigenvalues ...
+!> \par History
+!>      12.2024 Added DLA-Future support [Rocco Meli]
 !> \author Joost VandeVondele
-!> \author Rocco Meli
 ! **************************************************************************************************
    SUBROUTINE cp_cfm_heevd(matrix, eigenvectors, eigenvalues)
 
@@ -179,6 +180,8 @@ CONTAINS
 !> \param eigenvectors ...
 !> \param eigenvalues ...
 !> \param work ...
+!> \par History
+!>      12.2024 Added DLA-Future support [Rocco Meli]
 ! **************************************************************************************************
    SUBROUTINE cp_cfm_geeig(amatrix, bmatrix, eigenvectors, eigenvalues, work)
 

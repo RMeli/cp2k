@@ -923,6 +923,7 @@ CONTAINS
 !>      05.2002 created [JVdV]
 !>      12.2002 updated, added n optional parm [fawzi]
 !>      09.2021 removed CPASSERT(info == 0) since there is already check of info [Jan Wilhelm]
+!>      12.2024 Added DLA-Future support [Rocco Meli]
 !> \author Joost
 ! **************************************************************************************************
    SUBROUTINE cp_cfm_cholesky_decompose(matrix, n, info_out)
