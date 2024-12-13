@@ -23,7 +23,7 @@ MODULE cp_cfm_dlaf_api
 
    CHARACTER(len=*), PARAMETER, PRIVATE :: moduleN = 'cp_cfm_dlaf_api'
 
-   PUBLIC :: cp_pzpotrf_dlaf
+   PUBLIC :: cp_cfm_pzpotrf_dlaf
    PUBLIC :: cp_cfm_diag_dlaf, cp_cfm_diag_gen_dlaf
 
 CONTAINS
@@ -39,7 +39,7 @@ CONTAINS
 !> \param info 0 if factorization completed normally
 !> \author Rocco Meli
 ! **************************************************************************************************
-   SUBROUTINE cp_pzpotrf_dlaf(uplo, n, a, ia, ja, desca, info)
+   SUBROUTINE cp_cfm_pzpotrf_dlaf(uplo, n, a, ia, ja, desca, info)
       CHARACTER, INTENT(IN)                              :: uplo
       INTEGER, INTENT(IN)                                :: n
       COMPLEX(KIND=dp), DIMENSION(:, :), TARGET          :: a
@@ -65,7 +65,7 @@ CONTAINS
       CPABORT("CP2K compiled without the DLA-Future library.")
 #endif
       CALL timestop(handle)
-   END SUBROUTINE cp_pzpotrf_dlaf
+   END SUBROUTINE cp_cfm_pzpotrf_dlaf
 
    ! **************************************************************************************************
 !> \brief DLA-Future eigensolver for complex Hermitian matrices
