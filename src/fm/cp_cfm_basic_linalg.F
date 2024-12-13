@@ -1461,11 +1461,14 @@ CONTAINS
 ! **************************************************************************************************
 !> \brief ...
 !> \param matrix ...
+!> \param workspace ...
 !> \author Jan Wilhelm
+!> \author Rocco Meli
 ! **************************************************************************************************
-   SUBROUTINE cp_cfm_upper_to_full(matrix) ! TODO: Re-use workspace
+   SUBROUTINE cp_cfm_upper_to_full(matrix, workspace)
 
       TYPE(cp_cfm_type), INTENT(IN)                      :: matrix
+      TYPE(cp_cfm_type), OPTIONAL                        :: workspace
 
       CHARACTER(LEN=*), PARAMETER :: routineN = 'cp_cfm_upper_to_full'
 
@@ -1476,7 +1479,11 @@ CONTAINS
 
       CALL timeset(routineN, handle)
 
-      CALL cp_cfm_create(work, matrix%matrix_struct)
+      IF (.NOT. PRESENT(workspace)) THEN
+         CALL cp_cfm_create(work, matrix%matrix_struct)
+      ELSE
+         work = workspace
+      END IF
 
       ! get info of fm_mat_Q
       CALL cp_cfm_get_info(matrix=matrix, &
@@ -1502,7 +1509,9 @@ CONTAINS
 
       CALL cp_cfm_scale_and_add(z_one, matrix, z_one, work)
 
-      CALL cp_cfm_release(work)
+      IF (.NOT. PRESENT(workspace)) THEN
+         CALL cp_cfm_release(work)
+      END IF
 
       CALL timestop(handle)
 
