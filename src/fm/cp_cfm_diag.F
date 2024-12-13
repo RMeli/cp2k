@@ -202,8 +202,6 @@ CONTAINS
          ! Use DLA-Future generalized eigenvalue solver for large matrices
          CALL cp_cfm_diag_gen_dlaf(amatrix, bmatrix, work, evals)
       ELSE
-         ! TODO: Deal with unused workspace when using DLA-Future
-         MARK_USED(work)
 #endif
          ! Cholesky decompose S=U(T)U
          CALL cp_cfm_cholesky_decompose(bmatrix)

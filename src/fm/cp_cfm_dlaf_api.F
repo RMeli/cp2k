@@ -47,7 +47,7 @@ CONTAINS
       INTEGER, DIMENSION(9)                              :: desca
       INTEGER, TARGET                                    :: info
 
-      CHARACTER(len=*), PARAMETER                        :: routineN = 'cp_pzpotrf_dlaf'
+      CHARACTER(len=*), PARAMETER :: routineN = 'cp_cfm_pzpotrf_dlaf'
 
       INTEGER                                            :: handle
 
