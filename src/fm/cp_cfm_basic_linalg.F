@@ -28,6 +28,11 @@ MODULE cp_cfm_basic_linalg
    USE mathconstants,                   ONLY: z_one,&
                                               z_zero
    USE message_passing,                 ONLY: mp_comm_type
+
+#if defined(__DLAF)
+   USE cp_cfm_dlaf_api,                 ONLY: cp_cfm_pzpotrf_dlaf
+#endif
+
 #include "../base/base_uses.f90"
 
    IMPLICIT NONE
@@ -948,7 +953,12 @@ CONTAINS
 
 #if defined(__parallel)
       desca(:) = matrix%matrix_struct%descriptor(:)
+
+#if defined(__DLAF)
+      CALL cp_cfm_pzpotrf_dlaf('U', my_n, a, 1, 1, desca, info)
+#else
       CALL pzpotrf('U', my_n, a(1, 1), 1, 1, desca, info)
+#endif
 #else
       lda = SIZE(a, 1)
       CALL zpotrf('U', my_n, a(1, 1), lda, info)
