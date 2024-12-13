@@ -14,23 +14,23 @@
 !> \author Joost VandeVondele
 ! **************************************************************************************************
 MODULE cp_cfm_basic_linalg
-   USE cp_blacs_env,                    ONLY: cp_blacs_env_type
-   USE cp_cfm_types,                    ONLY: cp_cfm_create,&
-                                              cp_cfm_get_info,&
-                                              cp_cfm_release,&
-                                              cp_cfm_to_cfm,&
-                                              cp_cfm_type
-   USE cp_fm_struct,                    ONLY: cp_fm_struct_equivalent
-   USE cp_fm_types,                     ONLY: cp_fm_type
-   USE cp_log_handling,                 ONLY: cp_to_string
-   USE kahan_sum,                       ONLY: accurate_dot_product
-   USE kinds,                           ONLY: dp
-   USE mathconstants,                   ONLY: z_one,&
-                                              z_zero
-   USE message_passing,                 ONLY: mp_comm_type
+   USE cp_blacs_env, ONLY: cp_blacs_env_type
+   USE cp_cfm_types, ONLY: cp_cfm_create, &
+                           cp_cfm_get_info, &
+                           cp_cfm_release, &
+                           cp_cfm_to_cfm, &
+                           cp_cfm_type
+   USE cp_fm_struct, ONLY: cp_fm_struct_equivalent
+   USE cp_fm_types, ONLY: cp_fm_type
+   USE cp_log_handling, ONLY: cp_to_string
+   USE kahan_sum, ONLY: accurate_dot_product
+   USE kinds, ONLY: dp
+   USE mathconstants, ONLY: z_one, &
+                            z_zero
+   USE message_passing, ONLY: mp_comm_type
 
 #if defined(__DLAF)
-   USE cp_cfm_dlaf_api,                 ONLY: cp_cfm_pzpotrf_dlaf
+   USE cp_cfm_dlaf_api, ONLY: cp_cfm_pzpotrf_dlaf
 #endif
 
 #include "../base/base_uses.f90"
