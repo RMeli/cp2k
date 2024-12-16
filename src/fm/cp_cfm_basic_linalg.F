@@ -1473,8 +1473,9 @@ CONTAINS
 !> \brief ...
 !> \param matrix ...
 !> \param workspace ...
+!> \par History
+!>      12.2024 Added optional workspace as input [Rocco Meli]
 !> \author Jan Wilhelm
-!> \author Rocco Meli
 ! **************************************************************************************************
    SUBROUTINE cp_cfm_upper_to_full(matrix, workspace)
 

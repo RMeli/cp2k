@@ -34,7 +34,7 @@ CONTAINS
 !> \param n Matrix size
 !> \param a Local matrix
 !> \param ia Row index of first row (has to be 1)
-!> \param ja Col index of first column ()
+!> \param ja Col index of first column (has to be 1)
 !> \param desca ScaLAPACK matrix descriptor
 !> \param info 0 if factorization completed normally
 !> \author Rocco Meli
