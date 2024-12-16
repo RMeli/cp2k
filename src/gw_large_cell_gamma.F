@@ -16,9 +16,9 @@ MODULE gw_large_cell_gamma
                                               get_cell,&
                                               pbc
    USE constants_operator,              ONLY: operator_coulomb
-   USE cp_cfm_basic_linalg,             ONLY: cp_cfm_cholesky_decompose,&
-                                              cp_cfm_cholesky_invert,&
-                                              cp_cfm_upper_to_full
+   USE cp_cfm_basic_linalg,             ONLY: cp_cfm_upper_to_full
+   USE cp_cfm_cholesky,                 ONLY: cp_cfm_cholesky_decompose,&
+                                              cp_cfm_cholesky_invert
    USE cp_cfm_diag,                     ONLY: cp_cfm_geeig
    USE cp_cfm_types,                    ONLY: cp_cfm_create,&
                                               cp_cfm_get_info,&

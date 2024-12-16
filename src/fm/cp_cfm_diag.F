@@ -12,8 +12,8 @@
 !> \author Joost VandeVondele (2003-09)
 ! **************************************************************************************************
 MODULE cp_cfm_diag
-   USE cp_cfm_basic_linalg, ONLY: cp_cfm_cholesky_decompose, &
-                                  cp_cfm_gemm, &
+   USE cp_cfm_cholesky, ONLY: cp_cfm_cholesky_decompose
+   USE cp_cfm_basic_linalg, ONLY: cp_cfm_gemm, &
                                   cp_cfm_column_scale, &
                                   cp_cfm_scale, &
                                   cp_cfm_triangular_invert, &

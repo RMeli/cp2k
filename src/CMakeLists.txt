@@ -1015,6 +1015,7 @@ list(
   CP2K_SRCS_F
   fm/cp_blacs_env.F
   fm/cp_blacs_types.F
+  fm/cp_cfm_cholesky.F
   fm/cp_cfm_basic_linalg.F
   fm/cp_cfm_diag.F
   fm/cp_cfm_basic_linalg.F
