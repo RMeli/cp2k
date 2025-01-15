@@ -11,7 +11,7 @@ spack:
     - "spglib @2.3.0"
     - "dla-future-fortran@0.2.0"
     - "libint@2.9.0 +fortran tune=cp2k-lmax-5"
-    - "dftd4@3.6.0"
+    - "dftd4@3.6.0 build_system=cmake"
    # Unfortunately, ScaLAPACK 2.2.1 has not yet been packaged by Spack.
    # https://github.com/Reference-ScaLAPACK/scalapack/tree/v2.2.1
    # which contains https://github.com/Reference-ScaLAPACK/scalapack/pull/26
