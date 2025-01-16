@@ -2,10 +2,10 @@
 
 # author: Ole Schuett
 
-from pathlib import Path
-from typing import Any
 import argparse
 import io
+from pathlib import Path
+from typing import Any
 
 
 # ======================================================================================
@@ -841,7 +841,7 @@ RUN apt-get update -qq && apt-get install -qq --no-install-recommends \
 
 # Install a recent developer version of Spack.
 WORKDIR /opt/spack
-ARG SPACK_VERSION=f6402f8c55d52863dbbd5408a9d5b6f33a4ef78b
+ARG SPACK_VERSION=f75c1dd55815a787d6d69c2c1e79a7440c39edda
 RUN git init --quiet && \
     git remote add origin https://github.com/RMeli/spack.git && \
     git fetch --quiet --depth 1 origin ${{SPACK_VERSION}} --no-tags && \
