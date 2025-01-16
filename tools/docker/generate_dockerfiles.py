@@ -841,9 +841,9 @@ RUN apt-get update -qq && apt-get install -qq --no-install-recommends \
 
 # Install a recent developer version of Spack.
 WORKDIR /opt/spack
-ARG SPACK_VERSION=bbbf34ebfc8df81b0cf1392b2c3bc504c94ba4bf
+ARG SPACK_VERSION=f6402f8c55d52863dbbd5408a9d5b6f33a4ef78b
 RUN git init --quiet && \
-    git remote add origin https://github.com/spack/spack.git && \
+    git remote add origin https://github.com/RMeli/spack.git && \
     git fetch --quiet --depth 1 origin ${{SPACK_VERSION}} --no-tags && \
     git checkout --quiet FETCH_HEAD
 ENV PATH="/opt/spack/bin:${{PATH}}"
