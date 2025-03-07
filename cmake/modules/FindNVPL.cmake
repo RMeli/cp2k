@@ -53,5 +53,5 @@ endif()
 
 if(NOT TARGET "cp2k::FFTW3::fftw3")
   add_library("cp2k::FFTW3::fftw3" INTERFACE IMPORTED)
-  target_link_libraries("cp2k::FFT3W::fftw3" INTERFACE "nvpl::fftw")
+  target_link_libraries("cp2k::FFTW3::fftw3" INTERFACE "nvpl::fftw")
 endif()
