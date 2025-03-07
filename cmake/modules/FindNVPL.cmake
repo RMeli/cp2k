@@ -14,12 +14,12 @@ else()
 endif()
 
 # Look for separate components
-if(NOT nvpl_FOUND),
+if(NOT nvpl_FOUND)
   find_package(nvpl_blas CONFIG REQUIRED)
   find_package(nvpl_lapack CONFIG REQUIRED)
   find_package(nvpl_scalapack CONFIG REQUIRED)
   # 0.4.0 is the first version with the fftw3.h header
-  find_package(nvpl_fftw 0.4.0 CONFIG REQUIRED)
+  find_package(nvpl_fft 0.4.0 CONFIG REQUIRED)
 endif()
 
 if(NOT TARGET "cp2k::BLAS::NVPL::blas")
@@ -42,13 +42,13 @@ if(NOT TARGET "cp2k::BLAS::NVPL::scalapack_link")
   get_target_property(CP2K_NVPL_SCALAPACK_INCLUDE_DIRS "nvpl::scalapack${_nvpl_int}" INTERFACE_INCLUDE_DIRECTORIES)
 
   set_target_properties(
-    cosma::BLAS::NVPL::scalapack_link 
+    cp2k::BLAS::NVPL::scalapack_link 
     PROPERTIES INTERFACE_LINK_LIBRARIES 
-    "${COSMA_NVPL_LAPACK_LIBRARIES};${COSMA_NVPL_SCALAPACK_LIBRARIES}")
+    "${CP2K_NVPL_LAPACK_LIBRARIES};${CP2K_NVPL_SCALAPACK_LIBRARIES}")
   set_target_properties(
-    cosma::BLAS::NVPL::scalapack_link 
+    cp2k::BLAS::NVPL::scalapack_link 
     PROPERTIES INTERFACE_INCLUDE_DIRECTORIES 
-    "${COSMA_NVPL_BLAS_INCLUDE_DIRS};${COSMA_NVPL_LAPACK_INCLUDE_DIRS};${COSMA_NVPL_SCALAPACK_INCLUDE_DIRS}")
+    "${CP2K_NVPL_BLAS_INCLUDE_DIRS};${CP2K_NVPL_LAPACK_INCLUDE_DIRS};${CP2K_NVPL_SCALAPACK_INCLUDE_DIRS}")
 endif()
 
 if(NOT TARGET "cp2k::FFTW3::fftw3")
