@@ -1,0 +1,15 @@
+if(NOT cp2k::LAPACK)
+  add_library(cp2k::LAPACK INTERFACE IMPORTED)
+endif()
+
+if(CP2K_BLAS_VENDOR STREQUAL "Intel" OR CP2K_BLAS_VENDOR STREQUAL "MKL")
+  find_package(onemkl-cp2k CONFIG)
+  target_link_libraries(cp2k::LAPACK INTERFACE MKL::MKL)
+else()
+  # Use CMake FindLAPACK module
+  set(BLA_VENDOR ${CP2K_BLAS_VENDOR})
+  set(BLA_PGKCONFIG_BLAS ON)
+  find_package(LAPACK REQUIRED)
+  target_link_libraries(cp2k::LAPACK INTERFACE LAPACK::LAPACK)
+  set(CP2K_LAPACK_LIBRARIES ${LAPACK_LIBRARIES})
+endif()

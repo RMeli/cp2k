@@ -85,10 +85,10 @@ find_package_handle_standard_args(SCALAPACK
 # prevent clutter in cache
 
 # add target to link against
-if(NOT TARGET cp2k::SCALAPACK::scalapack)
-  add_library(cp2k::SCALAPACK::scalapack INTERFACE IMPORTED)
+if(NOT TARGET cp2k::ScaLAPACK)
+  add_library(cp2k::ScaLAPACK INTERFACE IMPORTED)
 endif()
 
-set_property(TARGET cp2k::SCALAPACK::scalapack
+set_property(TARGET cp2k::ScaLAPACK
              PROPERTY INTERFACE_LINK_LIBRARIES ${CP2K_SCALAPACK_LINK_LIBRARIES})
 mark_as_advanced(CP2K_SCALAPACK_LINK_LIBRARIES)

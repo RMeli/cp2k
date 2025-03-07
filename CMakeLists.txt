@@ -176,9 +176,21 @@ cmake_dependent_option(
   "Enable SPLA dgemm offloading (only valid with gpu support on)"
   "(NOT CP2K_USE_ACCEL MATCHES \"NONE\") AND (CP2K_USE_SPLA)" OFF)
 
-set(CP2K_BLAS_VENDOR
-    "auto"
-    CACHE STRING "Blas library for computations on host")
+set(CP2K_BLAS_VENDOR "${BLA_VENDOR}" CACHE STRING "BLAS/LAPACK vendor")
+
+set(CP2K_BLAS_INTERFACE_LIST "32bits" "64bits")
+set(CP2K_BLAS_INTERFACE "32bits" CACHE STRING "BLAS/LAPACK interface")
+if(NOT ${CP2K_CP2K_BLAS_INTERFACE} IN_LIST CP2K_BLAS_INTERFACE_LIST)
+  message(FATAL_ERROR "BLAS/LAPACK interface '${CP2K_BLAS_INTERFACE}' is not not supported."
+    "Supported interfaces are: '${CP2K_BLAS_INTERFACE_LIST}'.")
+endif()
+
+set(CP2K_BLAS_THREADING_LIST "sequential" "gnu-thread" "intel-thread" "tbb-thread")
+set(CP2K_BLAS_THREADING "sequential" CACHE STRING "BLAS/LAPACK threading")
+if(NOT ${CP2K_BLAS_THREADING} IN_LIST CP2K_BLAS_THREADING_LIST)
+  message(FATAL_ERROR "BLAS/LAPACK threading '${CP2K_BLAS_THREADING}' is not not supported."
+    "Supported interfaces are: '${CP2K_BLAS_THREADING_LIST}'.")
+endif()
 
 set(CP2K_SCALAPACK_VENDOR_LIST "MKL" "SCI" "GENERIC" "auto")
 set(CP2K_SCALAPACK_VENDOR
@@ -432,8 +444,11 @@ else()
   endif()
 endif()
 
-# BLAS & LAPACK, PkgConfig
-find_package(Lapack REQUIRED) # also calls find_package(BLAS)
+set(BLA_VENDOR ${CP2K_BLAS_VENDOR})
+set(BLA_STATIC ${CP2K_USE_STATIC_BLAS})
+set(BLA_PGKCONFIG_BLAS ON)
+find_package(blas-cp2k)
+find_package(lapack-cp2k)
 
 # SMM (Small Matrix-Matrix multiplication)
 if(CP2K_USE_LIBXSMM)
@@ -441,10 +456,8 @@ if(CP2K_USE_LIBXSMM)
   message(STATUS "Using LibXSMM for Small Matrix Multiplication")
 endif()
 
-# in practice it is always for any decent configuration. But I add a flags to
-# turn it off
 if(CP2K_USE_MPI)
-  find_package(SCALAPACK REQUIRED)
+  find_package(scalapack-cp2k REQUIRED)
 endif()
 
 # CUDA / ROCM easy for cuda a moving target for hip
@@ -764,15 +777,20 @@ message(
   "--------------------------------------------------------------------\n\n")
 
 message(
-  "  - BLAS AND LAPACK\n"
+  "  - BLAS\n"
   "    - vendor: ${CP2K_BLAS_VENDOR}\n"
-  "    - include directories: ${CP2K_BLAS_INCLUDE_DIR} ${LAPACK_INCLUDE_DIR}\n"
-  "    - libraries: ${CP2K_BLAS_LINK_LIBRARIES} ${CP2K_LAPACK_LINK_LIBRARIES}\n\n"
+  "    - libraries: ${CP2K_BLAS_LIBRARIES}\n\n"
+)
+
+message(
+  "  - LAPACK\n"
+  "    - vendor: ${CP2K_BLAS_VENDOR}\n"
+  "    - libraries: ${CP2K_LAPACK_LIBRARIES}\n\n"
 )
 
 if(CP2K_USE_MPI)
   message("  - MPI\n" # let below line separate
-          "    - include directories:  ${MPI_INCLUDE_DIRS}\n"
+          "    - include directories: ${MPI_INCLUDE_DIRS}\n"
           "    - libraries: ${MPI_LIBRARIES}\n\n")
 
   if(CP2K_USE_MPI_F08)
@@ -976,7 +994,7 @@ if(NOT CP2K_USE_SPLA)
 endif()
 
 if(NOT CP2K_USE_HDF5)
-  message("   - HDF5\n")
+  message("   - HDF5")
 endif()
 
 if(${CP2K_USE_ACCEL} MATCHES "NONE")

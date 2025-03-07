@@ -1583,10 +1583,10 @@ endif()
 add_library(cp2k_linalg_libs INTERFACE)
 target_link_libraries(
   cp2k_linalg_libs
-  INTERFACE cp2k::LAPACK::lapack
+  INTERFACE cp2k::BLAS
+            cp2k::LAPACK
             $<$<BOOL:${CP2K_USE_LIBXSMM}>:cp2k::LibXSMM::libxsmmf>
             $<$<BOOL:${CP2K_USE_LIBXSMM}>:cp2k::LibXSMM::libxsmmext>
-            cp2k::BLAS::blas
             $<$<BOOL:${CP2K_USE_CUDA}>:cp2k_cuda_libs>
             $<$<BOOL:${CP2K_USE_HIP}>:cp2k_hip_libs>
             $<$<BOOL:${CP2K_USE_MPI}>:MPI::MPI_Fortran>
@@ -1682,6 +1682,8 @@ add_library(cp2k_link_libs INTERFACE)
 target_link_libraries(
   cp2k_link_libs
   INTERFACE
+    cp2k_linalg_libs
+    $<$<BOOL:${CP2K_USE_MPI}>:cp2k::ScaLAPACK>
     $<$<BOOL:${CP2K_USE_DFTD4}>:dftd4::dftd4>
     $<$<BOOL:${CP2K_USE_DEEPMD}>:DeePMD::deepmd
     DeePMD::deepmd_c>
@@ -1705,8 +1707,6 @@ target_link_libraries(
     $<$<BOOL:${CP2K_USE_HDF5}>:HDF5::HDF5
     hdf5::hdf5_fortran>
     DBCSR::dbcsr
-    $<$<BOOL:${CP2K_USE_MPI}>:cp2k::SCALAPACK::scalapack>
-    cp2k_linalg_libs
     $<$<AND:$<CONFIG:COVERAGE>,$<Fortran_COMPILER_ID:GNU>>:gcov>)
 
 string(TIMESTAMP CP2K_TIMESTAMP "%Y-%m-%d %H:%M:%S")
