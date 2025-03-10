@@ -779,13 +779,13 @@ message(
 message(
   "  - BLAS\n"
   "    - vendor: ${CP2K_BLAS_VENDOR}\n"
-  "    - libraries: ${CP2K_BLAS_LIBRARIES}\n\n"
+  "    - libraries: ${CP2K_BLAS_LINK_LIBRARIES}\n\n"
 )
 
 message(
   "  - LAPACK\n"
   "    - vendor: ${CP2K_BLAS_VENDOR}\n"
-  "    - libraries: ${CP2K_LAPACK_LIBRARIES}\n\n"
+  "    - libraries: ${CP2K_LAPACK_LINK_LIBRARIES}\n\n"
 )
 
 if(CP2K_USE_MPI)
