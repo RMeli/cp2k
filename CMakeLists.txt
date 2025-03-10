@@ -185,11 +185,7 @@ set(CP2K_BLAS_VENDOR
     "auto"
     CACHE STRING "Blas library for computations on host")
 
-<<<<<<< HEAD
-set(CP2K_SCALAPACK_VENDOR_LIST "MKL" "SCI" "GENERIC" "auto")
-=======
-set(CP2K_SCALAPACK_VENDOR_LIST "MKL" "SCI" "NVPL" "GENERIC")
->>>>>>> 132f95cd59 (find nvpl)
+set(CP2K_SCALAPACK_VENDOR_LIST "MKL" "SCI" "NVPL" "GENERIC" "auto")
 set(CP2K_SCALAPACK_VENDOR
     "auto"
     CACHE STRING "scalapack vendor/generic backend")
