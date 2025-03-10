@@ -185,7 +185,11 @@ set(CP2K_BLAS_VENDOR
     "auto"
     CACHE STRING "Blas library for computations on host")
 
+<<<<<<< HEAD
 set(CP2K_SCALAPACK_VENDOR_LIST "MKL" "SCI" "GENERIC" "auto")
+=======
+set(CP2K_SCALAPACK_VENDOR_LIST "MKL" "SCI" "NVPL" "GENERIC")
+>>>>>>> 132f95cd59 (find nvpl)
 set(CP2K_SCALAPACK_VENDOR
     "auto"
     CACHE STRING "scalapack vendor/generic backend")
@@ -193,7 +197,8 @@ set_property(CACHE CP2K_SCALAPACK_VENDOR PROPERTY STRINGS
                                                   ${CP2K_SCALAPACK_VENDOR_LIST})
 
 if(NOT ${CP2K_SCALAPACK_VENDOR} IN_LIST CP2K_SCALAPACK_VENDOR_LIST)
-  message(FATAL_ERROR "Invalid scalapack vendor backend")
+  message(FATAL_ERROR "Invalid ScaLAPACK vendor backend '${CP2K_SCALAPACK_VENDOR}'"
+                      "Valid options are: ${CP2K_SCALAPACK_VENDOR_LIST}")
 endif()
 
 set(CP2K_DATA_DIR
@@ -539,7 +544,7 @@ endif()
 # we set this variable to ON when we want fftw3 support (with or without MKL).
 set(CP2K_USE_FFTW3_ OFF)
 if(CP2K_USE_FFTW3)
-  if(NOT CP2K_BLAS_VENDOR MATCHES "MKL" OR CP2K_USE_FFTW3_WITH_MKL)
+  if(NOT CP2K_BLAS_VENDOR MATCHES "MKL" OR NOT CP2K_BLAS_VENDOR STREQUAL "NVPL" OR CP2K_USE_FFTW3_WITH_MKL)
     find_package(Fftw REQUIRED)
     if(CP2K_ENABLE_FFTW3_THREADS_SUPPORT AND CP2K_ENABLE_FFTW3_OPENMP_SUPPORT)
       message(
@@ -563,8 +568,11 @@ if(CP2K_USE_FFTW3)
       )
     endif()
     set(CP2K_USE_FFTW3_ ON)
-  else()
+  elseif(CP2K_BLAS_VENDOR MATCHES "MKL")
     message("-- Using the MKL implementation of FFTW3.")
+    set(CP2K_USE_FFTW3_MKL_ ON)
+  elseif(CP2K_BLAS_VENDOR STREQUAL "NVPL")
+    message("-- Using the NVPL implementation of FFTW3.")
     set(CP2K_USE_FFTW3_MKL_ ON)
   endif()
 endif()

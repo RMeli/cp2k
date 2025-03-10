@@ -28,6 +28,7 @@ if(NOT CP2K_CONFIG_PACKAGE)
       "FlexiBLAS"
       "Atlas"
       "NVHPCBlas"
+      "NVPL"
       "CUSTOM")
 
   set(__BLAS_VENDOR_LIST ${CP2K_BLAS_VENDOR_LIST})
