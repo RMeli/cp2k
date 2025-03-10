@@ -24,7 +24,7 @@ if(NOT CP2K_CONFIG_PACKAGE)
 
   if(CP2K_BLAS_FOUND)
     # LAPACK in the Intel MKL 10+ library?
-    if(CP2K_BLAS_VENDOR MATCHES "MKL|OpenBLAS|Armpl|SCI|FlexiBLAS|NVHPC")
+    if(CP2K_BLAS_VENDOR MATCHES "MKL|OpenBLAS|Armpl|SCI|FlexiBLAS|NVHPC|NVPL")
       # we just need to create the interface that's all
       get_target_property(CP2K_LAPACK_INCLUDE_DIRS cp2k::BLAS::blas
                           INTERFACE_INCLUDE_DIRECTORIES)

@@ -38,17 +38,30 @@ if(NOT CP2K_CONFIG_PACKAGE)
           "-                  FindScalapack warning                        -"
           "-----------------------------------------------------------------"
           "\n"
-          "You may want to use mkl implementation of scalapack. To do this\n"
-          "add -DCP2K_SCALAPACK_VENDOR=MKL to the cmake command line.\n")
-    elseif(TARGET cp2k::BLAS::SCI::scalapack_link)
+          "You may want to use MKL implementation of ScaLAPACK. To do this\n"
+          "add -DCP2K_SCALAPACK_VENDOR=MKL to the CMake command line.\n\n")
+    endif()
+
+    if(TARGET cp2k::BLAS::SCI::scalapack_link)
       message(
         WARNING
           "-----------------------------------------------------------------"
           "-                  FindScalapack warning                        -"
           "-----------------------------------------------------------------"
           "\n"
-          "You may want to use Cray implementation of scalapack. To do this\n"
-          "add -DCP2K_SCALAPACK_VENDOR=SCI to the cmake command line\n\n")
+          "You may want to use Cray implementation of ScaLAPACK. To do this \n"
+          "add -DCP2K_SCALAPACK_VENDOR=SCI to the CMake command line.\n\n")
+    endif()
+
+    if(TARGET cp2k::BLAS::NVPL::scalapack_link)
+      message(
+        WARNING
+          "-----------------------------------------------------------------\n"
+          "-                  FindScalapack warning                        -\n"
+          "-----------------------------------------------------------------\n"
+          "\n"
+          "You may want to use NVPL implementation of ScaLAPACK. To do this \n"
+          "add -DCP2K_SCALAPACK_VENDOR=NVPL to the CMake command line.\n\n")
     endif()
 
     # try to detect location with pkgconfig
@@ -73,6 +86,20 @@ if(NOT CP2K_CONFIG_PACKAGE)
     if(NOT CP2K_SCALAPACK_FOUND)
       cp2k_find_libraries(SCALAPACK "scalapack")
     endif()
+
+  elseif(TARGET cp2k::BLAS::MKL::scalapack_link)
+    get_target_property(
+      CP2K_SCALAPACK_LINK_LIBRARIES cp2k::BLAS::MKL::scalapack_link
+      INTERFACE_LINK_LIBRARIES)
+    set(CP2K_SCALAPACK_FOUND yes)
+  elseif(TARGET cp2k::BLAS::SCI::scalapack_link)
+    get_target_property(
+      CP2K_SCALAPACK_LINK_LIBRARIES cp2k::BLAS::SCI::scalapack_link
+      INTERFACE_LINK_LIBRARIES)
+  elseif(TARGET cp2k::BLAS::NVPL::scalapack_link)
+    get_target_property(
+      CP2K_SCALAPACK_LINK_LIBRARIES cp2k::BLAS::NVPL::scalapack_link
+      INTERFACE_LINK_LIBRARIES)
   endif()
 endif()
 
