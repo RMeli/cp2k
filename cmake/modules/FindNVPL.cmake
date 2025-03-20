@@ -1,5 +1,5 @@
 # Try to find NVPL with the provided CONFIG
-find_package(nvpl CONFIG COMPONENTS blac lapack scalapack fft)
+find_package(nvpl CONFIG COMPONENTS blas lapack scalapack fft)
 
 if(CP2K_BLAS_INTERFACE STREQUAL "64bits")
   set(_nvpl_int "_ilp64")
