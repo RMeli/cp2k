@@ -25,7 +25,9 @@ MODULE input_cp2k_global
                                               FM_DIAG_TYPE_DEFAULT,&
                                               FM_DIAG_TYPE_DLAF,&
                                               FM_DIAG_TYPE_ELPA,&
-                                              FM_DIAG_TYPE_SCALAPACK
+                                              FM_DIAG_TYPE_SCALAPACK,&
+                                              DLAF_DIAG_TYPE_EVP,&
+                                              DLAF_DIAG_TYPE_GVP
    USE cp_fm_cholesky,                  ONLY: FM_CHOLESKY_TYPE_DLAF,&
                                               FM_CHOLESKY_TYPE_SCALAPACK,&
                                               FM_CHOLESKY_TYPE_DEFAULT
@@ -138,6 +140,18 @@ CONTAINS
       CALL section_add_keyword(section, keyword)
       CALL keyword_release(keyword)
       
+      CALL keyword_create(keyword, __LOCATION__, name="DLAF_DIAG_TYPE", &
+                          description="Use DLAF standard (EVP) or generalised (GVP) eigensolver", &
+                          usage="DLAF_DIAG_TYPE GVP", &
+                          enum_i_vals=(/DLAF_DIAG_TYPE_EVP, &
+                                        DLAF_DIAG_TYPE_GVP/), &
+                          enum_c_vals=s2a("EVP", "GVP"), &
+                          enum_desc=s2a("DLA-Future standard eigensolver", &
+                                        "DLA-Future generalized eigensolver"), &
+                          default_i_val=DLAF_DIAG_TYPE_EVP)
+      CALL section_add_keyword(section, keyword)
+      CALL keyword_release(keyword)
+      
       CALL keyword_create(keyword, __LOCATION__, name="PREFERRED_CHOLESKY_LIBRARY", &
                           description="Specifies Cholesky decomposition library to be used. If not available, "// &
                           "the ScaLAPACK library is used", &
@@ -237,7 +251,7 @@ CONTAINS
                           default_i_val=1024)
       CALL section_add_keyword(section, keyword)
       CALL keyword_release(keyword)
-      
+
       CALL keyword_create(keyword, __LOCATION__, name="DLAF_CHOLESKY_N_MIN", &
                           description="Minimum matrix size for the use of the Cholesky decomposition from "// &
                           "the DLA-Future library. The Cholesky decomposition from the ScaLAPACK library is used as fallback "// &

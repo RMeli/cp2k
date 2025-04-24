@@ -30,6 +30,8 @@ MODULE environment
                                               FM_DIAG_TYPE_DLAF,&
                                               FM_DIAG_TYPE_ELPA,&
                                               FM_DIAG_TYPE_SCALAPACK,&
+                                              DLAF_DIAG_TYPE_EVP,&
+                                              DLAF_DIAG_TYPE_GVP,&
                                               diag_finalize,&
                                               diag_init,&
                                               eps_check_diag_default
@@ -557,6 +559,7 @@ CONTAINS
       unit_nr = cp_print_key_unit_nr(logger, global_section, "PRINT_ELPA", extension=".Log")
       IF (unit_nr > 0) globenv%elpa_print = .TRUE.
       CALL cp_print_key_finished_output(unit_nr, logger, global_section, "PRINT_ELPA")
+      CALL section_vals_val_get(global_section, "DLAF_DIAG_TYPE", i_val=globenv%i_dlaf_diag_type)
       CALL section_vals_val_get(global_section, "DLAF_NEIGVEC_MIN", i_val=globenv%dlaf_neigvec_min)
       CALL section_vals_val_get(global_section, "DLAF_CHOLESKY_N_MIN", i_val=globenv%dlaf_cholesky_n_min)
       CALL section_vals_val_get(global_section, "PREFERRED_FFT_LIBRARY", i_val=i_fft)
@@ -621,6 +624,15 @@ CONTAINS
          CPABORT("Unknown diagonalization library specified")
       END SELECT
       
+      SELECT CASE (globenv%i_dlaf_diag_type)
+      CASE (DLAF_DIAG_TYPE_EVP)
+         globenv%dlaf_diag_type = "EVP"
+      CASE (DLAF_DIAG_TYPE_GVP)
+         globenv%dlaf_diag_type = "GVP"
+      CASE DEFAULT
+         CPABORT("Unknown DLAF diagonalization type specified")
+      END SELECT
+      
       SELECT CASE (i_cholesky)
       CASE (FM_DIAG_TYPE_SCALAPACK)
          globenv%cholesky_library = "ScaLAPACK"
@@ -628,7 +640,6 @@ CONTAINS
       CASE (FM_DIAG_TYPE_DLAF)
          globenv%cholesky_library = "DLAF"
          cholesky_type = FM_CHOLESKY_TYPE_DLAF
-         dlaf_cholesky_n_min = globenv%dlaf_cholesky_n_min
          CALL cite_reference(Solca2024)
       CASE DEFAULT
          CPABORT("Unknown Cholesky decomposition library specified")
@@ -823,6 +834,9 @@ CONTAINS
          END IF
 
          IF (globenv%diag_library == "DLAF") THEN
+            WRITE (UNIT=output_unit, FMT="(T2,A,T41,A40)") &
+            start_section_label//"| DLAF diagonalization type", &
+            ADJUSTR(TRIM(globenv%dlaf_diag_type(:40)))
             WRITE (UNIT=output_unit, FMT="(T2,A,T71,I10)") &
                start_section_label//"| Minimum number of eigenvectors for DLAF usage", &
                globenv%dlaf_neigvec_min
@@ -1114,6 +1128,7 @@ CONTAINS
                      elpa_print=globenv%elpa_print, &
                      elpa_qr_unsafe=globenv%elpa_qr_unsafe, &
                      dlaf_neigvec_min_input=globenv%dlaf_neigvec_min, &
+                     dlaf_diag_type_input=globenv%i_dlaf_diag_type, &
                      eps_check_diag_input=globenv%eps_check_diag)
 
       IF (fallback_applied) THEN

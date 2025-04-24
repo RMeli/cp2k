@@ -96,6 +96,8 @@ MODULE cp_fm_diag
    ! Minimum number of eigenvectors for the use of the DLAF eigensolver.
    ! The ScaLAPACK eigensolver is used as fallback for all smaller cases.
    INTEGER, SAVE, PUBLIC    :: dlaf_neigvec_min = 0
+   ! DLA-Future diagonalization type (EVP or GVP)
+   INTEGER, SAVE, PUBLIC    :: dlaf_diag_type = 0
 #endif
    ! Threshold value for the orthonormality check of the eigenvectors obtained
    ! after a diagonalization. A negative value disables the check.
@@ -106,6 +108,8 @@ MODULE cp_fm_diag
                                   FM_DIAG_TYPE_ELPA = 102, &
                                   FM_DIAG_TYPE_CUSOLVER = 103, &
                                   FM_DIAG_TYPE_DLAF = 104
+   INTEGER, PARAMETER, PUBLIC  :: DLAF_DIAG_TYPE_EVP = 400, &
+                                  DLAF_DIAG_TYPE_GVP = 401
 #if defined(__CUSOLVERMP)
    INTEGER, PARAMETER, PUBLIC :: FM_DIAG_TYPE_DEFAULT = FM_DIAG_TYPE_CUSOLVER
 #elif defined(__ELPA)
@@ -149,12 +153,14 @@ CONTAINS
 !> \author  MI 11.2013
 ! **************************************************************************************************
    SUBROUTINE diag_init(diag_lib, fallback_applied, elpa_kernel, elpa_neigvec_min_input, elpa_qr, &
-                        elpa_print, elpa_qr_unsafe, dlaf_neigvec_min_input, eps_check_diag_input)
+                        elpa_print, elpa_qr_unsafe, dlaf_neigvec_min_input, dlaf_diag_type_input, & 
+                        eps_check_diag_input)
       CHARACTER(LEN=*), INTENT(IN)                       :: diag_lib
       LOGICAL, INTENT(OUT)                               :: fallback_applied
       INTEGER, INTENT(IN)                                :: elpa_kernel, elpa_neigvec_min_input
       LOGICAL, INTENT(IN)                                :: elpa_qr, elpa_print, elpa_qr_unsafe
       INTEGER, INTENT(IN)                                :: dlaf_neigvec_min_input
+      INTEGER, INTENT(IN)                                :: dlaf_diag_type_input
       REAL(KIND=dp), INTENT(IN)                          :: eps_check_diag_input
 
       LOGICAL, SAVE                                      :: initialized = .FALSE.
@@ -198,6 +204,7 @@ CONTAINS
          initialized = .TRUE.
       END IF
       dlaf_neigvec_min = dlaf_neigvec_min_input
+      dlaf_diag_type = dlaf_diag_type_input
 #else
       MARK_USED(dlaf_neigvec_min_input)
 #endif
@@ -1424,11 +1431,13 @@ CONTAINS
       CALL cp_fm_get_info(amatrix, nrow_global=nao)
       nmo = SIZE(eigenvalues)
 
+      WRITE(*, *) "dlaf_diag_type = ", dlaf_diag_type
+
       IF (diag_type == FM_DIAG_TYPE_CUSOLVER .AND. nao >= 64) THEN
          ! Use cuSolverMP generalized eigenvalue solver for large matrices
          CALL cp_fm_general_cusolver(amatrix, bmatrix, eigenvectors, eigenvalues)
 #if defined(__DLAF)
-      ELSE IF (diag_type == FM_DIAG_TYPE_DLAF .AND. amatrix%matrix_struct%nrow_global >= dlaf_neigvec_min) THEN
+      ELSE IF (diag_type == FM_DIAG_TYPE_DLAF .AND. dlaf_diag_type == DLAF_DIAG_TYPE_GVP .AND. amatrix%matrix_struct%nrow_global >= dlaf_neigvec_min) THEN
          ! Use DLA-Future generalized eigenvalue solver for large matrices
          CALL cp_fm_diag_gen_dlaf(amatrix, bmatrix, eigenvectors, eigenvalues)
 #endif

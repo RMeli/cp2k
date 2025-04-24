@@ -68,6 +68,7 @@ MODULE global_types
       TYPE(rng_stream_type), ALLOCATABLE      :: gaussian_rng_stream
       CHARACTER(LEN=default_string_length)    :: diag_library = "ScaLAPACK"
       CHARACTER(LEN=default_string_length)    :: cholesky_library = "ScaLAPACK"
+      CHARACTER(LEN=default_string_length)    :: dlaf_diag_type = "EVP"
       CHARACTER(LEN=default_string_length)    :: default_fft_library = "FFTSG"
       CHARACTER(LEN=default_path_length)      :: fftw_wisdom_file_name = "/etc/fftw/wisdom"
       CHARACTER(LEN=default_string_length)    :: default_dgemm_library = "BLAS"
@@ -85,6 +86,7 @@ MODULE global_types
       LOGICAL :: elpa_qr_unsafe = .FALSE. ! enable potentially unsafe ELPA options
       INTEGER :: dlaf_neigvec_min = 0 ! Minimum number of eigenvectors for DLAF eigensolver usage
       INTEGER :: dlaf_cholesky_n_min = 0 ! Minimum matrix size for DLAF Cholesky decomposition usage
+      INTEGER :: i_dlaf_diag_type = 0 ! DLA-Future diagonalization type
       LOGICAL :: blacs_repeatable = .FALSE. ! will store the user preference for the repeatability of BLACS collectives
       REAL(KIND=dp) :: cp2k_start_time = 0.0_dp
       REAL(KIND=dp) :: cp2k_target_time = HUGE(0.0_dp) ! Maximum run time in seconds
