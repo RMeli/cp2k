@@ -91,7 +91,7 @@ ENV CP2K_VERSION=${CP2K_VERSION:-psmp}
 COPY ./tools/spack/cp2k_deps_${CP2K_VERSION}_cuda.yaml ./
 COPY ./tools/spack/cp2k_dev_repo ${SPACK_PACKAGES_ROOT}/repos/spack_repo/cp2k_dev_repo/
 RUN spack repo add --scope site ${SPACK_PACKAGES_ROOT}/repos/spack_repo/cp2k_dev_repo/
-RUN spack env create myenv cp2k_deps_${CP2K_VERSION}.yaml && \
+RUN spack env create myenv cp2k_deps_${CP2K_VERSION}_cuda.yaml && \
     spack -e myenv repo list
 
 # XPMEM
