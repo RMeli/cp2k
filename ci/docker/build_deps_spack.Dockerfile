@@ -88,18 +88,17 @@ RUN spack external find --all --not-buildable
 # Copy Spack configuration and build recipes
 ARG CP2K_VERSION
 ENV CP2K_VERSION=${CP2K_VERSION:-psmp}
-COPY ./tools/spack/cp2k_deps_${CP2K_VERSION}.yaml ./
+COPY ./tools/spack/cp2k_deps_${CP2K_VERSION}_cuda.yaml ./
 COPY ./tools/spack/cp2k_dev_repo ${SPACK_PACKAGES_ROOT}/repos/spack_repo/cp2k_dev_repo/
 RUN spack repo add --scope site ${SPACK_PACKAGES_ROOT}/repos/spack_repo/cp2k_dev_repo/
 RUN spack env create myenv cp2k_deps_${CP2K_VERSION}.yaml && \
     spack -e myenv repo list
 
 # XPMEM
-RUN spack -e myenv config change "packages:mpich:+xmpmem"
+RUN spack -e myenv config change "packages:mpich:require:+xpmem"
 
 # CUDA
-RUN spack -e myenv config add "packages:all:prefer:+cuda" && \
-    spack -e myenv config add "packages:all:prefer:cuda_arch:[90]" && \
+RUN spack -e myenv config add "packages:all:prefer:cuda_arch:[90]" && \
     spack -e myenv config add "packages:cuda:require:'@12.4'"
 
 # Install CP2K dependencies via Spack
