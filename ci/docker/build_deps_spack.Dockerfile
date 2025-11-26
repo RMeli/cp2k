@@ -101,6 +101,8 @@ RUN spack -e myenv config change "packages:mpich:require:+xpmem"
 RUN spack -e myenv config add "packages:all:prefer:cuda_arch=90" && \
     spack -e myenv config add "packages:cuda:require:'@12.4'"
 
+RUN spack -e myenv config get
+
 # Install CP2K dependencies via Spack
 RUN spack -e myenv concretize -f
 ENV SPACK_ENV_VIEW="${SPACK_ROOT}/var/spack/environments/myenv/spack-env/view"
