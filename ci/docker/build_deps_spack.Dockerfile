@@ -83,7 +83,7 @@ RUN spack repo add --scope site ${SPACK_PACKAGES_ROOT}/repos/spack_repo/builtin
 RUN spack compiler find
 
 # Find all external packages
-RUN spack external find --all --not-buildable
+RUN spack external find --all --not-buildable --exclude cuda nccl
 
 # Copy Spack configuration and build recipes
 ARG CP2K_VERSION
@@ -100,8 +100,7 @@ RUN spack -e myenv config change "packages:mpich:require:+xpmem"
 # CUDA
 # Make CUDA buildable (CUDA is find as --not-buildable external package by Spack)
 RUN spack -e myenv config add "packages:all:prefer:cuda_arch=90" && \
-    spack -e myenv config add "packages:cuda:require:'@12.4'" && \
-    spack -e myenv config change "packages:cuda:buildable:true"
+    spack -e myenv config add "packages:cuda:require:'@12.4'"
 
 RUN spack -e myenv config get
 
