@@ -98,8 +98,10 @@ RUN spack env create myenv cp2k_deps_${CP2K_VERSION}_cuda.yaml && \
 RUN spack -e myenv config change "packages:mpich:require:+xpmem"
 
 # CUDA
+# Make CUDA buildable (CUDA is find as --not-buildable external package by Spack)
 RUN spack -e myenv config add "packages:all:prefer:cuda_arch=90" && \
-    spack -e myenv config add "packages:cuda:require:'@12.4'"
+    spack -e myenv config add "packages:cuda:require:'@12.4'" && \
+    spack -e myenv config change "packages:cuda:buildable:true"
 
 RUN spack -e myenv config get
 
