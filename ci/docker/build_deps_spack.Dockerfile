@@ -38,6 +38,7 @@ RUN apt-get update -qq && apt-get install -qq --no-install-recommends \
     wget \
     xxd \
     xz-utils \
+    libnvidia-compute-550 \
     zstd && rm -rf /var/lib/apt/lists/*
 
 # Create dummy xpmem library for the MPICH build. At runtime the
@@ -83,7 +84,8 @@ RUN spack repo add --scope site ${SPACK_PACKAGES_ROOT}/repos/spack_repo/builtin
 RUN spack compiler find
 
 # Find all external packages
-RUN spack external find --all --not-buildable --exclude cuda nccl
+# Exclude CUDA and NCCL which we want to build via Spack
+RUN spack external find --all --not-buildable --exclude cuda --exclude nccl
 
 # Copy Spack configuration and build recipes
 ARG CP2K_VERSION
