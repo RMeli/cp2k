@@ -109,8 +109,7 @@ RUN spack -e myenv config get
 # Install CP2K dependencies via Spack
 RUN spack -e myenv concretize -f
 ENV SPACK_ENV_VIEW="${SPACK_ROOT}/var/spack/environments/myenv/spack-env/view"
-RUN spack -e myenv env depfile -o spack_makefile && \
-    make -j${NUM_PROCS} --file=spack_makefile SPACK_COLOR=never --output-sync=recurse && \
+RUN spack -e myenv install -j ${NUM_PROCS} -v && \
     cp -ar ${SPACK_ENV_VIEW}/bin ${SPACK_ENV_VIEW}/include ${SPACK_ENV_VIEW}/lib /opt/spack
 
 # EOF
