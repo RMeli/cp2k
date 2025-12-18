@@ -105,7 +105,7 @@ spack:
         - build_system=cmake
   specs:
     # Minimal
-    - "dbcsr@2.8.0"
+    - "dbcsr@2.9.0"
     - "libfabric@1.22.0"
     - "mpich@4.3.0"
     - "netlib-scalapack@2.2.2"
